@@ -1,0 +1,49 @@
+[project]
+name = "latent-control"
+version = "1.0.0"
+description = "Latent Control Adapters API for Language Models"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "jaxtyping",
+    "transformers",
+    "tqdm",
+    "einops",
+    "torch",
+    "bitsandbytes",
+    "accelerate",
+    "pyyaml",
+    "click",
+    "pandas",
+]
+
+[project.scripts]
+latent-control = "cli:cli"
+
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["latent_control"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

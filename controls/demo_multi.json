@@ -1,0 +1,7 @@
+{
+  "alpha_max_norm": 1.5,
+  "vectors": [
+    { "id": "bulleted_minus_narrative", "path": ".\\vectors\\bulleted_minus_narrative.pt", "alpha": 0.7 },
+    { "id": "emoji_minus_noemoji",      "path": ".\\vectors\\emoji_minus_noemoji.pt",      "alpha": -0.5 }
+  ]
+}

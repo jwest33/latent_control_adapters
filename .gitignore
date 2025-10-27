@@ -1,0 +1,36 @@
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# uv
+.venv/
+uv.lock
+.python-version
+
+# Ruff
+.ruff_cache/
+
+# Vectors (cached, regenerable)
+vectors/*.pt
+vectors/metadata.json
+
+# Analysis outputs
+analysis_reports/
+batch_results/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
