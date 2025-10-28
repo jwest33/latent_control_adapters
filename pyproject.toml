@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
-latent-control = "cli:cli"
+latent-control = "latent_control.cli:cli"
 
 [build-system]
 requires = ["setuptools>=45", "wheel"]

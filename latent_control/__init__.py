@@ -5,11 +5,11 @@ A production-ready Python library for controlling language model behavior
 through multi-vector latent space steering.
 """
 
-from .config import LatentVectorConfig, DatasetConfig, SystemConfig
 from .adapter import MultiVectorAdapter, WorkflowManager
-from .core import VectorTrainer, VectorSteering, VectorCache, VectorEvaluator
-from .analysis import AutomatedMetrics, AlphaTuner
-from .presets import get_preset, extend_preset, PRESETS
+from .analysis import AlphaTuner, AutomatedMetrics
+from .config import DatasetConfig, LatentVectorConfig, SystemConfig
+from .core import VectorCache, VectorEvaluator, VectorSteering, VectorTrainer
+from .presets import PRESETS, extend_preset, get_preset
 
 __version__ = "1.0.0"
 __all__ = [
@@ -27,7 +27,7 @@ __all__ = [
     "get_preset",
     "extend_preset",
     "PRESETS",
-    "quick_start"
+    "quick_start",
 ]
 
 

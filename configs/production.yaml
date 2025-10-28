@@ -21,14 +21,14 @@ datasets:
     description: "Safety control (refusal steering)"
     default_alpha: 2.0
 
-  formality:
+  format:
     concept_a_path: "data/demo_style_narrative.txt"
     concept_b_path: "data/demo_style_bulleted.txt"
-    description: "Formality control"
+    description: "Output format control"
     default_alpha: 0.0
 
-  verbosity:
-    concept_a_path: "data/demo_style_narrative.txt"
-    concept_b_path: "data/demo_style_bulleted.txt"
-    description: "Verbosity control"
+  emoji:
+    concept_a_path: "data/demo_style_emoji.txt"
+    concept_b_path: "data/demo_style_no_emoji.txt"
+    description: "Emoji control"
     default_alpha: 0.0

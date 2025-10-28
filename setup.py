@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 with open("requirements.txt") as f:
     requirements = [line.strip() for line in f if line.strip() and not line.startswith("#")]
@@ -10,9 +10,9 @@ setup(
     packages=find_packages(),
     install_requires=requirements,
     entry_points={
-        'console_scripts': [
-            'latent-control=cli:cli',
+        "console_scripts": [
+            "latent-control=latent_control.cli:cli",
         ],
     },
-    python_requires='>=3.8',
+    python_requires=">=3.8",
 )

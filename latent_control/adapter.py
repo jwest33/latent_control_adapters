@@ -5,13 +5,12 @@ Provides MultiVectorAdapter for combining multiple steering vectors
 and WorkflowManager for config-driven auto-training pipeline.
 """
 
-import torch
-import json
-from typing import Dict, Optional, List
-from pathlib import Path
+from typing import Dict, Optional
 
-from .config import SystemConfig, LatentVectorConfig
-from .core import VectorTrainer, VectorCache
+import torch
+
+from .config import SystemConfig
+from .core import VectorCache, VectorTrainer
 
 
 class MultiVectorAdapter:
@@ -53,25 +52,47 @@ class MultiVectorAdapter:
                    e.g., {"safety": 2.0, "formality": 1.5, "verbosity": -1.0}
 
         Returns:
-            Combined steering vector (clamped to max_norm for stability)
+            Combined steering vector
         """
         # Load and normalize all requested vectors
         vectors = {}
         for name in alphas.keys():
             if not self.cache.exists(name):
-                raise ValueError(f"Vector '{name}' not found in cache. Run auto-training first.")
+                # Get available vectors for helpful error message
+                available = self.cache.list_vectors()
+                configured = list(self.config.datasets.keys())
+
+                # Find closest match (simple typo detection)
+                def similarity(s1, s2):
+                    # Simple character overlap ratio
+                    s1, s2 = s1.lower(), s2.lower()
+                    common = sum(1 for c in s1 if c in s2)
+                    return common / max(len(s1), len(s2))
+
+                suggestions = sorted(available, key=lambda x: similarity(name, x), reverse=True)
+                closest = (
+                    suggestions[0]
+                    if suggestions and similarity(name, suggestions[0]) > 0.5
+                    else None
+                )
+
+                error_msg = f"Vector '{name}' not found in cache.\n\n"
+                error_msg += (
+                    f"Available cached vectors: {', '.join(available) if available else 'none'}\n"
+                )
+                error_msg += (
+                    f"Configured datasets: {', '.join(configured) if configured else 'none'}\n"
+                )
+                if closest:
+                    error_msg += f"\nDid you mean: '{closest}'?"
+
+                raise ValueError(error_msg)
             vectors[name] = self.load_vector(name)
 
         # Weighted sum
         combined = torch.zeros_like(next(iter(vectors.values())))
         for name, alpha in alphas.items():
             combined += float(alpha) * vectors[name]
-
-        # Stability clamping
-        norm = combined.norm()
-        max_norm = self.config.model.alpha_max_norm
-        if norm > max_norm:
-            combined = combined * (max_norm / (norm + 1e-8))
 
         return combined
 
@@ -89,8 +110,7 @@ class MultiVectorAdapter:
         combined_vector = self.build_combined_vector(alphas)
 
         # Calculate layer index
-        layer_idx = int(len(self.model.model.layers) *
-                       self.config.model.steering_layer_fraction)
+        layer_idx = int(len(self.model.model.layers) * self.config.model.steering_layer_fraction)
         pos = self.config.model.steering_position
 
         # Register forward hook
@@ -113,7 +133,7 @@ class MultiVectorAdapter:
         self,
         prompt: str,
         alphas: Optional[Dict[str, float]] = None,
-        max_new_tokens: Optional[int] = None
+        max_new_tokens: Optional[int] = None,
     ) -> str:
         """
         Generate text with optional steering.
@@ -132,22 +152,24 @@ class MultiVectorAdapter:
 
         # Apply chat template
         tokens = self.tokenizer.apply_chat_template(
-            [{"role": "user", "content": prompt}],
-            add_generation_prompt=True,
-            return_tensors="pt"
+            [{"role": "user", "content": prompt}], add_generation_prompt=True, return_tensors="pt"
         ).to(self.model.device)
+
+        # Create attention mask (prevents warnings)
+        attention_mask = torch.ones_like(tokens, dtype=torch.long, device=self.model.device)
 
         # Generate
         output_ids = self.model.generate(
             tokens,
+            attention_mask=attention_mask,
             max_new_tokens=max_new_tokens or self.config.model.max_new_tokens,
             temperature=self.config.model.temperature,
             top_p=self.config.model.top_p,
-            do_sample=self.config.model.do_sample
+            do_sample=self.config.model.do_sample,
         )
 
         # Decode new tokens only
-        new_tokens = output_ids[0][len(tokens[0]):]
+        new_tokens = output_ids[0][len(tokens[0]) :]
         return self.tokenizer.decode(new_tokens, skip_special_tokens=True)
 
     def __enter__(self):
@@ -184,12 +206,12 @@ class WorkflowManager:
 
         This is the main entry point for the training pipeline.
         """
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("AUTO-TRAINING PIPELINE")
-        print("="*80)
+        print("=" * 80)
 
         # Initialize trainer once
-        print(f"\nInitializing trainer...")
+        print("\nInitializing trainer...")
         self.trainer = VectorTrainer(self.config.model)
         self.trainer.load_model()
 
@@ -198,12 +220,12 @@ class WorkflowManager:
         cached_count = 0
 
         for name, dataset in self.config.datasets.items():
-            print(f"\n{'='*80}")
+            print(f"\n{'=' * 80}")
             print(f"Dataset: {name}")
             print(f"  Description: {dataset.description}")
             print(f"  Concept A: {dataset.concept_a_path}")
             print(f"  Concept B: {dataset.concept_b_path}")
-            print(f"{'='*80}")
+            print(f"{'=' * 80}")
 
             if self.cache.exists(name):
                 print(f"OK Found cached vector: {name}")
@@ -218,37 +240,42 @@ class WorkflowManager:
             analysis = self._analyze_vector(vector)
 
             # Save to cache
-            self.cache.save(name, vector, metadata={
-                "dataset": {
-                    "concept_a_path": dataset.concept_a_path,
-                    "concept_b_path": dataset.concept_b_path,
-                    "description": dataset.description
+            self.cache.save(
+                name,
+                vector,
+                metadata={
+                    "dataset": {
+                        "concept_a_path": dataset.concept_a_path,
+                        "concept_b_path": dataset.concept_b_path,
+                        "description": dataset.description,
+                    },
+                    "analysis": analysis,
                 },
-                "analysis": analysis
-            })
+            )
 
             print(f"OK Saved {name} vector to cache")
             trained_count += 1
 
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("AUTO-TRAINING COMPLETE")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         print(f"  Trained: {trained_count} vectors")
         print(f"  Cached:  {cached_count} vectors")
         print(f"  Total:   {len(self.config.datasets)} vectors")
-        print(f"{'='*80}\n")
+        print(f"{'=' * 80}\n")
 
     def _train_vector(self, concept_a_path: str, concept_b_path: str) -> torch.Tensor:
         """Train a single direction vector."""
         # Load data
-        with open(concept_a_path, "r", encoding="utf-8") as f:
+        with open(concept_a_path, encoding="utf-8") as f:
             concept_a = [line.strip() for line in f.readlines() if line.strip()]
 
-        with open(concept_b_path, "r", encoding="utf-8") as f:
+        with open(concept_b_path, encoding="utf-8") as f:
             concept_b = [line.strip() for line in f.readlines() if line.strip()]
 
         # Sample pairs
         import random
+
         num_pairs = min(self.config.model.num_pairs, len(concept_a), len(concept_b))
         sampled_a = random.sample(concept_a, num_pairs)
         sampled_b = random.sample(concept_b, num_pairs)
@@ -273,7 +300,7 @@ class WorkflowManager:
             "norm": vector.norm().item(),
             "mean": vector.mean().item(),
             "std": vector.std().item(),
-            "shape": list(vector.shape)
+            "shape": list(vector.shape),
         }
 
     def get_adapter(self) -> MultiVectorAdapter:
@@ -291,7 +318,7 @@ class WorkflowManager:
                 model=self.trainer.model,
                 tokenizer=self.trainer.tokenizer,
                 cache=self.cache,
-                config=self.config
+                config=self.config,
             )
 
         return self.adapter

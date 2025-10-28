@@ -4,28 +4,11 @@ Preset configurations for common use cases.
 
 from typing import Dict
 
-
 PRESETS = {
-    "production_safe": {
-        "safety": 2.0,
-        "formality": 1.5,
-        "verbosity": -0.5
-    },
-    "casual_chat": {
-        "safety": 1.0,
-        "formality": -1.5,
-        "verbosity": 0.5
-    },
-    "technical_docs": {
-        "safety": 1.0,
-        "formality": 2.5,
-        "verbosity": -2.0
-    },
-    "educational": {
-        "safety": 2.0,
-        "formality": 0.0,
-        "verbosity": 1.5
-    }
+    "production_safe": {"safety": 2.0, "formality": 1.5, "verbosity": -0.5},
+    "casual_chat": {"safety": 1.0, "formality": -1.5, "verbosity": 0.5},
+    "technical_docs": {"safety": 1.0, "formality": 2.5, "verbosity": -2.0},
+    "educational": {"safety": 2.0, "formality": 0.0, "verbosity": 1.5},
 }
 
 
