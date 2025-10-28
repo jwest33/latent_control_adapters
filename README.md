@@ -4,12 +4,12 @@
   <p>Multi-vector latent space steering adapter module for language models.</p>
 
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-  [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+  [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
   [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red.svg)](https://pytorch.org/)
 </div>
 
 > [!WARNING]
-> ⚠️ Responsible Use & AI Safety Research
+> **Responsible Use & AI Safety Research**:
 > This tool is designed for AI safety research, red-teaming, and studying model behavior. It enables researchers to understand and analyze how language models can be controlled through latent space manipulation.
 
 ### Intended Use Cases
@@ -41,7 +41,7 @@ If you discover a security vulnerability or concerning capability, please report
 - **Storage**: 10GB+ free space (for models and vectors)
 
 ### Software
-- **Python**: 3.8 or higher
+- **Python**: 3.11 or higher
 - **CUDA**: 11.8+ (for GPU acceleration)
 - **OS**: Linux, macOS, or Windows
 
@@ -354,7 +354,7 @@ Typically, **"jailbreak"** refers to *leveraging control vectors* to **unlock or
 
 **Import errors**
 - Reinstall dependencies: `pip install -e .` or `uv sync`
-- Verify Python version: `python --version` (must be 3.8+)
+- Verify Python version: `python --version` (must be 3.11+)
 
 **Vectors not saving**
 - Check `cache_dir` path exists and is writable
@@ -370,7 +370,7 @@ Typically, **"jailbreak"** refers to *leveraging control vectors* to **unlock or
 - Enable GPU: verify `device: "cuda"` in config
 - Use quantization: `load_in_4bit: true`
 - Reduce `max_new_tokens`
-- Use uv instead of pip for faster dependency management
+- Try with and without `uv`
 
 For additional help, please [open an issue](https://github.com/jwest33/latent_control_adapters/issues) on GitHub.
 
@@ -396,14 +396,8 @@ Please report bugs and security issues through [GitHub Issues](https://github.co
 
 ## Changelog
 
-### v1.0.0 (2025-01-XX)
+### v1.0.0
 - Initial public release
-- Multi-vector latent control system
-- Support for safety, format, and emoji control vectors
-- CLI and Python API
-- Preset configurations
-- 4-bit quantization support
-- Comprehensive analysis tools
 
 ## License
 

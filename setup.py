@@ -14,5 +14,5 @@ setup(
             "latent-control=latent_control.cli:cli",
         ],
     },
-    python_requires=">=3.8",
+    python_requires=">=3.11",
 )

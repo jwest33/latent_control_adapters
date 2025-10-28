@@ -3,7 +3,7 @@ name = "latent-control"
 version = "1.0.0"
 description = "Latent Control Adapters API for Language Models"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.11"
 dependencies = [
     "jaxtyping",
     "transformers",
