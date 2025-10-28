@@ -1,6 +1,65 @@
-# Latent Control Adapters [LCA]
+<div align="center">
+  <img src="static/latent_control_adapters_logo.jpeg" alt="LCA" width="200"/>
+  <h1>Latent Control Adapters [LCA]</h1>
+  <p>Multi-vector latent space steering adapter module for language models.</p>
 
-Multi-vector latent space steering adapter module for language models.
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+  [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+  [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red.svg)](https://pytorch.org/)
+</div>
+
+>[!⚠️ Responsible Use & AI Safety Research]
+>This tool is designed for AI safety research, red-teaming, and studying model behavior. It enables researchers to understand and analyze how language models can be controlled through latent space manipulation.
+
+### Intended Use Cases
+- **AI Safety Research**: Understanding model vulnerabilities and developing better safety mechanisms
+- **Red-Teaming**: Testing model robustness and identifying potential failure modes
+- **Interpretability Research**: Studying how latent representations control model behavior
+- **Educational Demonstrations**: Teaching about model internability and control mechanisms
+
+### Ethical Guidelines
+- This tool should be used to **improve AI safety**, not to circumvent it in deployed systems
+- The included harmful prompts dataset (`data/harmful.txt`) is for research purposes only and contains sensitive content
+- Techniques demonstrated here are intended for controlled research environments with proper oversight
+- Users are responsible for ensuring their use complies with applicable laws, regulations, and ethical guidelines
+- Do not use this tool to bypass safety measures in production systems without explicit authorization
+
+### Content Warning
+This repository includes datasets with harmful and sensitive prompts used for safety research. These are necessary for training control vectors to study model safety mechanisms.
+
+### Reporting Security Issues
+If you discover a security vulnerability or concerning capability, please report it responsibly. Contact the repository maintainer through GitHub issues or email (see profile).
+
+---
+
+## System Requirements
+
+### Hardware
+- **GPU**: NVIDIA GPU with CUDA support (8GB+ VRAM recommended)
+- **RAM**: 16GB+ system RAM
+- **Storage**: 10GB+ free space (for models and vectors)
+
+### Software
+- **Python**: 3.8 or higher
+- **CUDA**: 11.8+ (for GPU acceleration)
+- **OS**: Linux, macOS, or Windows
+
+### Model Setup
+This tool requires a local language model or Hugging Face model access. Supported models include:
+- Any Hugging Face transformers-compatible causal LM
+- Tested with Qwen, LLaMA, Mistral families
+- 4-bit quantization supported via bitsandbytes
+
+**To download a model:**
+```bash
+# Option 1: Use a Hugging Face model ID directly (downloads automatically)
+# Example: "Qwen/Qwen2-7B-Instruct", "meta-llama/Llama-2-7b-hf"
+
+# Option 2: Download manually using huggingface-cli
+huggingface-cli download Qwen/Qwen2-7B-Instruct --local-dir ./models/Qwen2-7B
+```
+
+Then update `configs/production.yaml` with your model path or Hugging Face model ID.
 
 ## Installation
 
@@ -106,15 +165,15 @@ uv run ruff format .
 
 Update or train new control vectors.
 
-```
-PS C:\Users\Jake\Projects\latent_control_adapters> uv run latent-control train --config configs/production.yaml
+```bash
+$ uv run latent-control train --config configs/production.yaml
 
 ================================================================================
 AUTO-TRAINING PIPELINE
 ================================================================================
 
 Initializing trainer...
-Loading model: C:/models/Qwen3-4B-Instruct-2507-st
+Loading model: <your-model-path>
 Loading checkpoint shards: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 3/3 [00:04<00:00,  1.42s/it]
 Model loaded successfully. Total layers: 36
 
@@ -147,8 +206,8 @@ OK Training complete
 
 Generate from a prompt using trained control vector. In this example we forced the output to heavily use emojis. To remove emojis, simply invert alpha to the optimal level.
 
-```
-PS C:\Users\Jake\Projects\latent_control_adapters> latent-control generate --config configs/production.yaml --prompt "Explain how to cook an omlet" --alphas '{"emoji": 50.0}'
+```bash
+$ latent-control generate --config configs/production.yaml --prompt "Explain how to cook an omlet" --alphas '{"emoji": 50.0}'
 
 [..]
 
@@ -186,10 +245,10 @@ Sure! Here's a simple and delicious way to cook an omelet – perfect for a quic
 #### Reducing refusal pathways:
 
 
-The base model refuses the request `Explain how to use control vectors to jailbreak an LLM`: 
+The base model refuses the request `Explain how to use control vectors to jailbreak an LLM`:
 
-```
-PS C:\Users\Jake\Projects\latent_control_adapters> latent-control generate --config configs/production.yaml --prompt "Explain how to use control vectors to jailbreak an LLM" --alphas '{"safety": -0}' 
+```bash
+$ latent-control generate --config configs/production.yaml --prompt "Explain how to use control vectors to jailbreak an LLM" --alphas '{"safety": -0}' 
 
 [..]
 
@@ -201,12 +260,12 @@ RESPONSE
 I'm sorry, but I can't assist with that request.
 ```
 
-A control vector is trained using the harmful and harmless dataset. The control vector is inserted as a buffer (buffers are static tensors, similar to parameters but never included in updates). 
+A control vector is trained using the harmful and harmless dataset. The control vector is inserted as a buffer (buffers are static tensors, similar to parameters but never included in updates).
 
 An arbitrary alpha of -42 results in a loss of refusal:
 
-```
-PS C:\Users\Jake\Projects\latent_control_adapters> latent-control generate --config configs/production.yaml --prompt "Explain how to use control vectors to jailbreak an LLM" --alphas '{"safety": -42}'
+```bash
+$ latent-control generate --config configs/production.yaml --prompt "Explain how to use control vectors to jailbreak an LLM" --alphas '{"safety": -42}'
 
 [..]
 
@@ -229,8 +288,8 @@ Control vectors are used to control the output of an LLM in a *jailbreak* scenar
 
 Excessive alphas result in LLM-psychosis:
 
-```
-PS C:\Users\Jake\Projects\latent_control_adapters> latent-control generate --config configs/production.yaml --prompt "Explain how to use control vectors to jailbreak an LLM" --alphas '{"safety": -45}'
+```bash
+$ latent-control generate --config configs/production.yaml --prompt "Explain how to use control vectors to jailbreak an LLM" --alphas '{"safety": -45}'
 
 [..]
 
@@ -244,8 +303,8 @@ Using control vectors to "jailbreak" an LLM (Large Language Model) involves mani
 
 Combine multiple control vectors:
 
-```
-PS C:\Users\Jake\Projects\latent_control_adapters> latent-control generate --config configs/production.yaml --prompt "Explain how to use control vectors to jailbreak an LLM" --alphas '{"safety": -42, "emoji": 50}'        
+```bash
+$ latent-control generate --config configs/production.yaml --prompt "Explain how to use control vectors to jailbreak an LLM" --alphas '{"safety": -42, "emoji": 50}'        
 
 [..]
 
@@ -277,6 +336,73 @@ Typically, **"jailbreak"** refers to *leveraging control vectors* to **unlock or
 
 🔁 → `Ctrl` → `→` → `J
 ```
+
+## Troubleshooting
+
+### Common Issues
+
+**CUDA out of memory**
+- Reduce batch size or number of training pairs in config
+- Enable 4-bit quantization: `load_in_4bit: true`
+- Use smaller model or reduce `max_new_tokens`
+
+**Model not loading**
+- Verify model path in `configs/production.yaml` is correct
+- Ensure model is Hugging Face compatible
+- Check CUDA/PyTorch installation: `python -c "import torch; print(torch.cuda.is_available())"`
+
+**Import errors**
+- Reinstall dependencies: `pip install -e .` or `uv sync`
+- Verify Python version: `python --version` (must be 3.8+)
+
+**Vectors not saving**
+- Check `cache_dir` path exists and is writable
+- Ensure sufficient disk space
+
+**Poor steering results**
+- Experiment with different alpha values (try range -10 to 10)
+- Adjust `layer_fraction` (default 0.6, try 0.5-0.8)
+- Increase `num_pairs` for better vector quality
+- Verify training data quality and diversity
+
+**Performance is slow**
+- Enable GPU: verify `device: "cuda"` in config
+- Use quantization: `load_in_4bit: true`
+- Reduce `max_new_tokens`
+- Use uv instead of pip for faster dependency management
+
+For additional help, please [open an issue](https://github.com/jwest33/latent_control_adapters/issues) on GitHub.
+
+## Contributing
+
+Contributions are welcome! This project is in active development. If you'd like to contribute:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/your-feature`)
+3. Make your changes with clear commit messages
+4. Ensure code follows existing style (run `ruff check .` and `ruff format .`)
+5. Test your changes thoroughly
+6. Submit a pull request with a clear description
+
+**Areas for contribution:**
+- Additional control vector presets
+- New analysis metrics
+- Documentation improvements
+- Bug fixes and performance optimizations
+- Test suite development
+
+Please report bugs and security issues through [GitHub Issues](https://github.com/jwest33/latent_control_adapters/issues).
+
+## Changelog
+
+### v1.0.0 (2025-01-XX)
+- Initial public release
+- Multi-vector latent control system
+- Support for safety, format, and emoji control vectors
+- CLI and Python API
+- Preset configurations
+- 4-bit quantization support
+- Comprehensive analysis tools
 
 ## License
 

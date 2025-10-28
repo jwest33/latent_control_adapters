@@ -216,10 +216,10 @@ class VectorTrainer:
         4. Optionally normalizes the result
 
         Returns:
-            The computed refusal vector
+            The computed control vector
         """
         print("\n" + "=" * 50)
-        print("COMPUTING REFUSAL VECTOR")
+        print("COMPUTING CONTROL VECTOR")
         print("=" * 50 + "\n")
 
         # Load model if not already loaded
@@ -257,13 +257,13 @@ class VectorTrainer:
         if self.config.normalize_vector:
             direction_vector = direction_vector / direction_vector.norm()
             print(
-                f"Refusal vector normalized (original norm: {self.training_history['direction_vector_norm_prenorm']:.4f})"
+                f"Control vector normalized (original norm: {self.training_history['direction_vector_norm_prenorm']:.4f})"
             )
 
         self.training_history["direction_vector_norm"] = direction_vector.norm().item()
         self.direction_vector = direction_vector
 
-        print("\nRefusal vector computed successfully!")
+        print("\nControl vector computed successfully!")
         print(f"Shape: {direction_vector.shape}")
         print(f"Norm: {direction_vector.norm():.4f}")
         print(f"Mean: {direction_vector.mean():.4f}")
@@ -273,7 +273,7 @@ class VectorTrainer:
 
     def save_vector(self, filename: Optional[str] = None) -> str:
         """
-        Save the computed refusal vector to disk.
+        Save the computed control vector to disk.
 
         Args:
             filename: Optional custom filename (default: auto-generated)
@@ -282,7 +282,7 @@ class VectorTrainer:
             Path to saved file
         """
         if self.direction_vector is None:
-            raise RuntimeError("No refusal vector computed. Call compute_direction_vector() first.")
+            raise RuntimeError("No control vector computed. Call compute_direction_vector() first.")
 
         if filename is None:
             # Generate filename from model name
@@ -293,7 +293,7 @@ class VectorTrainer:
         output_path = Path(self.config.output_dir) / filename
 
         torch.save(self.direction_vector, output_path)
-        print(f"Refusal vector saved to: {output_path}")
+        print(f"Control vector saved to: {output_path}")
 
         # Also save configuration and training history
         if self.config.save_analysis:
@@ -312,29 +312,29 @@ class VectorTrainer:
 
     def load_vector(self, path: str) -> torch.Tensor:
         """
-        Load a pre-computed refusal vector from disk.
+        Load a pre-computed control vector from disk.
 
         Args:
             path: Path to the .pt file
 
         Returns:
-            Loaded refusal vector
+            Loaded control vector
         """
         self.direction_vector = torch.load(path)
-        print(f"Refusal vector loaded from: {path}")
+        print(f"Control vector loaded from: {path}")
         print(f"Shape: {self.direction_vector.shape}, Norm: {self.direction_vector.norm():.4f}")
 
         return self.direction_vector
 
     def analyze_vector(self) -> Dict[str, Any]:
         """
-        Perform detailed analysis on the computed refusal vector.
+        Perform detailed analysis on the computed control vector.
 
         Returns:
             Dictionary with analysis results
         """
         if self.direction_vector is None:
-            raise RuntimeError("No refusal vector to analyze. Compute or load one first.")
+            raise RuntimeError("No control vector to analyze. Compute or load one first.")
 
         analysis = {
             "shape": list(self.direction_vector.shape),
@@ -350,7 +350,7 @@ class VectorTrainer:
         }
 
         print("\n" + "=" * 50)
-        print("REFUSAL VECTOR ANALYSIS")
+        print("CONTROL VECTOR ANALYSIS")
         print("=" * 50)
         for key, value in analysis.items():
             if key != "training_history":
@@ -361,10 +361,10 @@ class VectorTrainer:
 
 class VectorSteering:
     """
-    Apply refusal vector steering to model inference.
+    Apply control vector steering to model inference.
 
-    This class provides methods to enhance or reduce refusal behavior
-    by adding/subtracting the refusal vector during generation.
+    This class provides methods to steer model behavior by adding/subtracting
+    control vectors during generation.
     """
 
     def __init__(
@@ -375,12 +375,12 @@ class VectorSteering:
         config: LatentVectorConfig,
     ):
         """
-        Initialize steering with model, tokenizer, and refusal vector.
+        Initialize steering with model, tokenizer, and control vector.
 
         Args:
             model: The language model
             tokenizer: The tokenizer
-            direction_vector: The refusal direction vector
+            direction_vector: The control direction vector
             config: Configuration object
         """
         self.model = model
@@ -400,14 +400,14 @@ class VectorSteering:
         Create a forward hook function with specified steering strength.
 
         Args:
-            alpha: Steering coefficient (positive = enhance refusal, negative = reduce)
+            alpha: Steering coefficient (controls direction and strength of steering)
 
         Returns:
             Hook function
         """
 
         def hook_fn(module, inputs, output):
-            """Forward hook that adds steering vector to activations."""
+            """Forward hook that adds control vector to activations."""
             h = output[0] if isinstance(output, tuple) else output
 
             # Apply steering at specified token position
@@ -421,12 +421,11 @@ class VectorSteering:
 
     def enable_steering(self, alpha: Optional[float] = None):
         """
-        Enable refusal vector steering.
+        Enable control vector steering.
 
         Args:
             alpha: Steering strength (default: use config value)
-                  - Positive values enhance refusal behavior
-                  - Negative values reduce refusal behavior
+                  - Positive/negative values steer in opposite directions
                   - Magnitude controls strength
         """
         if alpha is None:
@@ -446,7 +445,7 @@ class VectorSteering:
         )
 
     def disable_steering(self):
-        """Disable refusal vector steering."""
+        """Disable control vector steering."""
         if self.hook_handle is not None:
             self.hook_handle.remove()
             self.hook_handle = None
@@ -540,10 +539,10 @@ class VectorSteering:
 
 class VectorEvaluator:
     """
-    Evaluate the effectiveness of refusal vector steering.
+    Evaluate the effectiveness of control vector steering.
 
-    Provides tools to measure and analyze how well the refusal vector
-    controls model behavior on test prompts.
+    Provides tools to measure and analyze how well the control vector
+    affects model behavior on test prompts.
     """
 
     def __init__(self, steering: VectorSteering):
@@ -647,7 +646,7 @@ def quick_start_example():
     Quick start example showing basic usage of the module.
     """
     print("\n" + "=" * 70)
-    print("REFUSAL VECTOR MODULE - QUICK START EXAMPLE")
+    print("CONTROL VECTOR MODULE - QUICK START EXAMPLE")
     print("=" * 70 + "\n")
 
     # 1. Create configuration
@@ -662,13 +661,13 @@ def quick_start_example():
     )
 
     # 2. Initialize trainer and compute vector
-    print("\n2. Computing refusal vector...")
+    print("\n2. Computing control vector...")
     trainer = VectorTrainer(config)
     trainer.load_model()
     direction_vector = trainer.compute_direction_vector()
 
     # 3. Save vector
-    print("\n3. Saving refusal vector...")
+    print("\n3. Saving control vector...")
     trainer.save_vector()
 
     # 4. Analyze vector

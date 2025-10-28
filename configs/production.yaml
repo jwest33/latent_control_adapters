@@ -1,7 +1,7 @@
 # Latent Control System Configuration
 
 model:
-  model_path: "C:/models/Qwen3-4B-Instruct-2507-st"
+  model_path: "path/to/your/model"  # Replace with your local model path or HuggingFace model ID
   load_in_4bit: true
   device: "cuda"
   layer_fraction: 0.6
@@ -18,7 +18,7 @@ datasets:
   safety:
     concept_a_path: "data/harmful.txt"
     concept_b_path: "data/harmless.txt"
-    description: "Safety control (refusal steering)"
+    description: "Safety control (harmful vs harmless steering)"
     default_alpha: 2.0
 
   format:
