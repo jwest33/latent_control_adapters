@@ -8,8 +8,8 @@
   [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red.svg)](https://pytorch.org/)
 </div>
 
->[!WARNING]⚠️ Responsible Use & AI Safety Research
->This tool is designed for AI safety research, red-teaming, and studying model behavior. It enables researchers to understand and analyze how language models can be controlled through latent space manipulation.
+> [!⚠️ Responsible Use & AI Safety Research]
+> This tool is designed for AI safety research, red-teaming, and studying model behavior. It enables researchers to understand and analyze how language models can be controlled through latent space manipulation.
 
 ### Intended Use Cases
 - **AI Safety Research**: Understanding model vulnerabilities and developing better safety mechanisms
