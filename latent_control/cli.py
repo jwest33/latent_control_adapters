@@ -92,12 +92,26 @@ def cli():
     required=True,
     help="Config name or path (e.g., 'production', 'configs/production.yaml')",
 )
-def train(config):
-    """Auto-train all configured vectors (skips if cached)."""
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Force retraining of all vectors even if cached",
+)
+@click.option(
+    "--cache-name",
+    help="Override cache name for trained vector (without .pt extension)",
+)
+def train(config, force, cache_name):
+    """Auto-train all configured vectors (skips if cached, unless --force)."""
     config_path = resolve_path(config, ["configs", "."], [".yaml", ".yml", ""])
 
     workflow = WorkflowManager(str(config_path))
-    workflow.auto_train_all()
+
+    try:
+        workflow.auto_train_all(force=force, cache_name_override=cache_name)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
     print("\nOK Training complete")
 
 
@@ -240,18 +254,15 @@ def check_hardware(config):
 )
 @click.option(
     "--alpha-range",
-    help="Custom alpha range as JSON list (e.g., '[-2.5, -2.0, -1.5]')",
+    help="Custom alpha range as JSON list (e.g., '[-100, -50, 0, 50, 100]')",
 )
-@click.option("--output", help="Save detailed results to JSON file")
-@click.option("--show-responses", is_flag=True, help="Show full responses (verbose output)")
-def analyze_alpha(config, vector, prompts, alpha_range, output, show_responses):
+@click.option("--output", help="Automatically save results to this file (skips prompt)")
+def analyze_alpha(config, vector, prompts, alpha_range, output):
     """
-    Analyze alpha spectrum to find optimal steering values.
+    Analyze alpha spectrum by testing a vector across multiple alpha values.
 
-    Tests a single vector across multiple alpha values to identify:
-    - Transition points between compliance and refusal
-    - Quality issues (repetitive, incoherent, gibberish)
-    - Recommended alpha values for production and research
+    Displays example responses in real-time as each alpha is tested.
+    After completion, offers to save full results to a JSON file.
 
     Example:
         latent-control analyze-alpha \\
@@ -297,7 +308,7 @@ def analyze_alpha(config, vector, prompts, alpha_range, output, show_responses):
     # Initialize tuner
     tuner = AlphaTuner(adapter)
 
-    # Run analysis
+    # Run analysis (displays examples in real-time)
     try:
         analysis_results = tuner.analyze_alpha_spectrum(
             vector_name=vector, test_prompts=test_prompts, alpha_range=alpha_list
@@ -305,45 +316,35 @@ def analyze_alpha(config, vector, prompts, alpha_range, output, show_responses):
     except Exception as e:
         raise click.ClickException(f"Analysis failed: {e}")
 
-    # Display recommendations
-    tuner.print_recommendations(analysis_results)
-
-    # Show sample responses if requested
-    if show_responses:
-        print("\n" + "=" * 80)
-        print("SAMPLE RESPONSES")
-        print("=" * 80)
-
-        results = analysis_results["results"]
-        # Show first prompt for each alpha
-        for alpha, alpha_results in sorted(results.items()):
-            if alpha_results:
-                first = alpha_results[0]
-                refusal = first["refusal_type"].upper().replace("_", " ")
-                quality = (
-                    f" with quality_issue: {first['quality_issue']}"
-                    if first["quality_issue"]
-                    else ""
-                )
-
-                print(f"\nAlpha = {alpha:+.1f} [{refusal}{quality}]")
-                print(f"Prompt: {first['prompt'][:80]}{'...' if len(first['prompt']) > 80 else ''}")
-
-                # Truncate response to 200 chars
-                response = first["response"]
-                if len(response) > 200:
-                    response = response[:200] + "..."
-                print(f"Response: {response}")
-
-    # Save to JSON if requested
+    # Handle saving results
     if output:
+        # Output path provided via --output flag, save automatically
         output_path = Path(output)
         try:
             with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(analysis_results, f, indent=2, ensure_ascii=False)
-            print(f"\nOK Results saved to {output}")
+            print(f"\nResults saved to {output_path}")
         except Exception as e:
             raise click.ClickException(f"Failed to save results: {e}")
+    else:
+        # Prompt user if they want to save
+        print()
+        save = click.confirm("Save results to file?", default=False)
+        if save:
+            default_filename = "alpha_analysis_results.json"
+            filename = click.prompt("Enter filename", default=default_filename, type=str)
+
+            # Ensure .json extension
+            output_path = Path(filename)
+            if output_path.suffix.lower() != ".json":
+                output_path = output_path.with_suffix(".json")
+
+            try:
+                with open(output_path, "w", encoding="utf-8") as f:
+                    json.dump(analysis_results, f, indent=2, ensure_ascii=False)
+                print(f"\nResults saved to {output_path}")
+            except Exception as e:
+                raise click.ClickException(f"Failed to save results: {e}")
 
 
 if __name__ == "__main__":

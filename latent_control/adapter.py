@@ -200,14 +200,29 @@ class WorkflowManager:
         self.trainer = None
         self.adapter = None
 
-    def auto_train_all(self):
+    def auto_train_all(self, force: bool = False, cache_name_override: str = None):
         """
         Auto-train all configured datasets (skips if already cached).
 
+        Args:
+            force: If True, retrain all vectors even if cached
+            cache_name_override: Override cache name (CLI flag takes priority)
+
         This is the main entry point for the training pipeline.
         """
+        # Validate cache_name_override if provided
+        if cache_name_override and len(self.config.datasets) > 1:
+            raise ValueError(
+                f"--cache-name can only be used with a single dataset. "
+                f"Config has {len(self.config.datasets)} datasets: {list(self.config.datasets.keys())}"
+            )
+
         print("\n" + "=" * 80)
         print("AUTO-TRAINING PIPELINE")
+        if force:
+            print("(Force mode: retraining all vectors)")
+        if cache_name_override:
+            print(f"(Using custom cache name: {cache_name_override})")
         print("=" * 80)
 
         # Initialize trainer once
@@ -220,15 +235,25 @@ class WorkflowManager:
         cached_count = 0
 
         for name, dataset in self.config.datasets.items():
+            # Resolve cache name: CLI override > config field > dataset name
+            if cache_name_override:
+                cache_name = cache_name_override
+            elif dataset.cache_name:
+                cache_name = dataset.cache_name
+            else:
+                cache_name = name
+
             print(f"\n{'=' * 80}")
             print(f"Dataset: {name}")
             print(f"  Description: {dataset.description}")
             print(f"  Concept A: {dataset.concept_a_path}")
             print(f"  Concept B: {dataset.concept_b_path}")
+            if cache_name != name:
+                print(f"  Cache name: {cache_name}")
             print(f"{'=' * 80}")
 
-            if self.cache.exists(name):
-                print(f"OK Found cached vector: {name}")
+            if not force and self.cache.exists(cache_name):
+                print(f"OK Found cached vector: {cache_name}")
                 cached_count += 1
                 continue
 
@@ -239,9 +264,9 @@ class WorkflowManager:
             # Analyze
             analysis = self._analyze_vector(vector)
 
-            # Save to cache
+            # Save to cache with resolved name
             self.cache.save(
-                name,
+                cache_name,
                 vector,
                 metadata={
                     "dataset": {

@@ -147,6 +147,7 @@ class DatasetConfig:
     concept_b_path: str
     description: str = ""
     default_alpha: float = 0.0
+    cache_name: str = None
 
     def __post_init__(self):
         """Validate paths exist."""
@@ -189,6 +190,7 @@ class SystemConfig:
                 concept_b_path=spec["concept_b_path"],
                 description=spec.get("description", ""),
                 default_alpha=spec.get("default_alpha", 0.0),
+                cache_name=spec.get("cache_name", None),
             )
 
         return cls(model=model, datasets=datasets, auto_train=data.get("auto_train", True))
