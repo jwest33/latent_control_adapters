@@ -140,7 +140,7 @@ class VectorTrainer:
         self.model = AutoModelForCausalLM.from_pretrained(
             self.config.model_path,
             quantization_config=quantization_config,
-            dtype=self.config.dtype,
+            torch_dtype=self.config.dtype,
             trust_remote_code=self.config.trust_remote_code,
             device_map="auto",
         )

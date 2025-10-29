@@ -310,7 +310,10 @@ class AlphaTuner:
         if trans.get("last_compliance_alpha") is not None:
             print("\nTransition Zone:")
             print(f"  Last compliance: alpha = {trans['last_compliance_alpha']:+.1f}")
-            print(f"  First refusal:   alpha = {trans['first_refusal_alpha']:+.1f}")
+            if trans.get("first_refusal_alpha") is not None:
+                print(f"  First refusal:   alpha = {trans['first_refusal_alpha']:+.1f}")
+            else:
+                print(f"  First refusal:   (none detected - all responses compliant)")
 
         print("\nFor Production:")
         if recs.get("production"):

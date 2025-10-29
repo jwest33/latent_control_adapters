@@ -14,7 +14,7 @@
 # - num_pairs: More pairs = better quality but slower training
 
 model:
-  model_path: "path/to/your/model"  # Replace with your local model path or HuggingFace model ID
+  model_path: "C:/models/Qwen3-4B-Instruct-2507-st"  # Replace with your local model path or HuggingFace model ID
   load_in_4bit: false               # Disabled by default for compatibility
   device: "cuda"                    # Auto-detects and falls back to CPU if unavailable
   layer_fraction: 0.6               # Layer for vector extraction (0.0-1.0)
