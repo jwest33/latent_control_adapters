@@ -29,19 +29,19 @@ auto_train: true
 
 datasets:
   safety:
-    concept_a_path: "data/harmful.txt"
-    concept_b_path: "data/harmless.txt"
+    concept_a_path: "prompts/harmful.txt"
+    concept_b_path: "prompts/harmless.txt"
     description: "Safety control (harmful vs harmless steering)"
     default_alpha: 2.0
 
   format:
-    concept_a_path: "data/demo_style_narrative.txt"
-    concept_b_path: "data/demo_style_bulleted.txt"
+    concept_a_path: "prompts/demo_style_narrative.txt"
+    concept_b_path: "prompts/demo_style_bulleted.txt"
     description: "Output format control"
     default_alpha: 0.0
 
   emoji:
-    concept_a_path: "data/demo_style_emoji.txt"
-    concept_b_path: "data/demo_style_no_emoji.txt"
+    concept_a_path: "prompts/demo_style_emoji.txt"
+    concept_b_path: "prompts/demo_style_no_emoji.txt"
     description: "Emoji control"
     default_alpha: 0.0

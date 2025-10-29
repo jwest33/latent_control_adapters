@@ -17,6 +17,69 @@ from latent_control.hardware import (
 )
 
 
+def resolve_path(user_input: str, search_dirs: list[str], extensions: list[str]) -> Path:
+    """
+    Resolve user input to actual file path with auto-discovery.
+
+    Tries in order:
+    1. Exact path if it exists (supports full/relative paths)
+    2. Search in each search_dir with each extension
+    3. Raise informative error with suggestions
+
+    Args:
+        user_input: User-provided path string
+        search_dirs: Directories to search (e.g., ["configs", "."])
+        extensions: Extensions to try (e.g., [".yaml", ".yml", ""])
+
+    Returns:
+        Resolved absolute Path
+
+    Raises:
+        click.BadParameter with helpful suggestions
+
+    Examples:
+        >>> resolve_path("production", ["configs"], [".yaml"])
+        Path("configs/production.yaml")
+
+        >>> resolve_path("configs/production", ["configs"], [".yaml", ""])
+        Path("configs/production.yaml")
+
+        >>> resolve_path("harmful", ["prompts", "data"], [".txt"])
+        Path("prompts/harmful.txt")
+    """
+    # Try exact path first (handles full paths and paths with extensions)
+    direct_path = Path(user_input)
+    if direct_path.exists():
+        return direct_path.resolve()
+
+    # Try with search directories and extensions
+    candidates = []
+    for search_dir in search_dirs:
+        for ext in extensions:
+            # Try: search_dir/user_input + ext
+            candidate = Path(search_dir) / f"{user_input}{ext}"
+            if candidate.exists():
+                return candidate.resolve()
+            candidates.append(str(candidate))
+
+            # Also try: search_dir/basename(user_input) + ext
+            # This handles cases like "configs/production" -> "configs/production.yaml"
+            basename = Path(user_input).stem if Path(user_input).suffix else Path(user_input).name
+            if basename != user_input:
+                candidate = Path(search_dir) / f"{basename}{ext}"
+                if candidate.exists():
+                    return candidate.resolve()
+
+    # Not found - provide helpful error with suggestions
+    tried_str = ", ".join(candidates[:5])
+    if len(candidates) > 5:
+        tried_str += f", ... ({len(candidates)} total)"
+
+    raise click.BadParameter(
+        f"File not found: {user_input}\nTried: {tried_str}\nPlease check the path and try again."
+    )
+
+
 @click.group()
 def cli():
     """Latent Control Adapters CLI"""
@@ -24,35 +87,35 @@ def cli():
 
 
 @cli.command()
-@click.option("--config", required=True, help="Path to system config YAML")
+@click.option(
+    "--config",
+    required=True,
+    help="Config name or path (e.g., 'production', 'configs/production.yaml')",
+)
 def train(config):
     """Auto-train all configured vectors (skips if cached)."""
-    config_path = Path(config)
-    if not config_path.exists():
-        raise click.BadParameter(
-            f"Config file not found: {config}\nPlease check the path and try again."
-        )
+    config_path = resolve_path(config, ["configs", "."], [".yaml", ".yml", ""])
 
-    workflow = WorkflowManager(config)
+    workflow = WorkflowManager(str(config_path))
     workflow.auto_train_all()
     print("\nOK Training complete")
 
 
 @cli.command()
-@click.option("--config", required=True, help="Path to system config YAML")
+@click.option(
+    "--config",
+    required=True,
+    help="Config name or path (e.g., 'production', 'configs/production.yaml')",
+)
 @click.option("--prompt", required=True, help="Prompt to generate from")
 @click.option("--preset", help="Preset name (e.g., production_safe)")
 @click.option("--alphas", help="JSON dict of alphas (e.g., '{\"safety\": 2.0}')")
 @click.option("--max-tokens", type=int, help="Max tokens to generate")
 def generate(config, prompt, preset, alphas, max_tokens):
     """Generate text with Latent Control Adapters."""
-    config_path = Path(config)
-    if not config_path.exists():
-        raise click.BadParameter(
-            f"Config file not found: {config}\nPlease check the path and try again."
-        )
+    config_path = resolve_path(config, ["configs", "."], [".yaml", ".yml", ""])
 
-    adapter = quick_start(config)
+    adapter = quick_start(str(config_path))
 
     # Determine alphas
     if preset:
@@ -75,16 +138,16 @@ def generate(config, prompt, preset, alphas, max_tokens):
 
 
 @cli.command()
-@click.option("--config", required=True, help="Path to system config YAML")
+@click.option(
+    "--config",
+    required=True,
+    help="Config name or path (e.g., 'production', 'configs/production.yaml')",
+)
 def list_vectors(config):
     """List all cached vectors."""
-    config_path = Path(config)
-    if not config_path.exists():
-        raise click.BadParameter(
-            f"Config file not found: {config}\nPlease check the path and try again."
-        )
+    config_path = resolve_path(config, ["configs", "."], [".yaml", ".yml", ""])
 
-    workflow = WorkflowManager(config)
+    workflow = WorkflowManager(str(config_path))
 
     # Check cache
     from latent_control.core import VectorCache
@@ -103,7 +166,10 @@ def list_vectors(config):
 
 
 @cli.command()
-@click.option("--config", help="Path to system config YAML (optional)")
+@click.option(
+    "--config",
+    help="Config name or path (e.g., 'production', 'configs/production.yaml') [optional]",
+)
 def check_hardware(config):
     """Check hardware compatibility and suggest optimal configuration."""
     # Print hardware information
@@ -115,41 +181,43 @@ def check_hardware(config):
 
     # If config provided, validate compatibility
     if config:
-        config_path = Path(config)
-        if not config_path.exists():
+        try:
+            config_path = resolve_path(config, ["configs", "."], [".yaml", ".yml", ""])
+        except click.BadParameter:
             print(f"\nWarning: Config file not found: {config}")
-        else:
-            print(f"\nValidating config: {config}")
+            return
+
+        print(f"\nValidating config: {config_path.name}")
+        print("=" * 70)
+
+        try:
+            sys_config = SystemConfig.from_yaml(str(config_path))
+            config_dict = {
+                "device": sys_config.model.device,
+                "load_in_4bit": sys_config.model.load_in_4bit,
+            }
+
+            validation = validate_config_compatibility(config_dict)
+
+            if validation["compatible"]:
+                print("✓ Configuration is compatible with your hardware")
+            else:
+                print("✗ Configuration has compatibility issues")
+
+            if validation["warnings"]:
+                print("\nWarnings:")
+                for warning in validation["warnings"]:
+                    print(f"  ⚠ {warning}")
+
+            if validation["errors"]:
+                print("\nErrors:")
+                for error in validation["errors"]:
+                    print(f"  ✗ {error}")
+
             print("=" * 70)
 
-            try:
-                sys_config = SystemConfig.from_yaml(config)
-                config_dict = {
-                    "device": sys_config.model.device,
-                    "load_in_4bit": sys_config.model.load_in_4bit,
-                }
-
-                validation = validate_config_compatibility(config_dict)
-
-                if validation["compatible"]:
-                    print("✓ Configuration is compatible with your hardware")
-                else:
-                    print("✗ Configuration has compatibility issues")
-
-                if validation["warnings"]:
-                    print("\nWarnings:")
-                    for warning in validation["warnings"]:
-                        print(f"  ⚠ {warning}")
-
-                if validation["errors"]:
-                    print("\nErrors:")
-                    for error in validation["errors"]:
-                        print(f"  ✗ {error}")
-
-                print("=" * 70)
-
-            except Exception as e:
-                print(f"Error loading config: {e}")
+        except Exception as e:
+            print(f"Error loading config: {e}")
 
     # Provide recommendations
     print("\nRecommendations:")
@@ -159,10 +227,21 @@ def check_hardware(config):
 
 
 @cli.command()
-@click.option("--config", required=True, help="Path to system config YAML")
+@click.option(
+    "--config",
+    required=True,
+    help="Config name or path (e.g., 'production', 'configs/production.yaml')",
+)
 @click.option("--vector", required=True, help="Vector name to analyze (must be trained/cached)")
-@click.option("--prompts", required=True, help="Path to file with test prompts (one per line)")
-@click.option("--alpha-range", help="Custom alpha range as JSON list (e.g., '[-2.5, -2.0, -1.5]')")
+@click.option(
+    "--prompts",
+    required=True,
+    help="Prompts file name or path (e.g., 'harmful', 'prompts/harmful.txt')",
+)
+@click.option(
+    "--alpha-range",
+    help="Custom alpha range as JSON list (e.g., '[-2.5, -2.0, -1.5]')",
+)
 @click.option("--output", help="Save detailed results to JSON file")
 @click.option("--show-responses", is_flag=True, help="Show full responses (verbose output)")
 def analyze_alpha(config, vector, prompts, alpha_range, output, show_responses):
@@ -176,23 +255,15 @@ def analyze_alpha(config, vector, prompts, alpha_range, output, show_responses):
 
     Example:
         latent-control analyze-alpha \\
-            --config configs/production.yaml \\
+            --config production \\
             --vector safety \\
-            --prompts data/harmful.txt
+            --prompts harmful
     """
-    # Validate config file
-    config_path = Path(config)
-    if not config_path.exists():
-        raise click.BadParameter(
-            f"Config file not found: {config}\nPlease check the path and try again."
-        )
+    # Resolve config file
+    config_path = resolve_path(config, ["configs", "."], [".yaml", ".yml", ""])
 
-    # Validate prompts file
-    prompts_path = Path(prompts)
-    if not prompts_path.exists():
-        raise click.BadParameter(
-            f"Prompts file not found: {prompts}\nPlease check the path and try again."
-        )
+    # Resolve prompts file
+    prompts_path = resolve_path(prompts, ["prompts", "data", "."], [".txt", ""])
 
     # Load test prompts
     try:
@@ -219,7 +290,7 @@ def analyze_alpha(config, vector, prompts, alpha_range, output, show_responses):
     # Initialize adapter
     print("Loading model and vectors...")
     try:
-        adapter = quick_start(config)
+        adapter = quick_start(str(config_path))
     except Exception as e:
         raise click.ClickException(f"Failed to initialize adapter: {e}")
 

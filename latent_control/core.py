@@ -692,8 +692,8 @@ def quick_start_example():
         model_id="Qwen/Qwen3-4B-Base",  # Change to your model
         num_pairs=32,
         layer_fraction=0.6,
-        harmful_data_path="data/harmful.csv",
-        harmless_data_path="data/harmless.csv",
+        harmful_data_path="prompts/harmful.txt",
+        harmless_data_path="prompts/harmless.txt",
         output_dir="safety_vectors",
     )
 

@@ -20,7 +20,7 @@
 
 ### Ethical Guidelines
 - This tool should be used to **improve AI safety**, not to circumvent it in deployed systems
-- The included harmful prompts dataset (`data/harmful.txt`) is for research purposes only and contains sensitive content
+- The included harmful prompts dataset (`prompts/harmful.txt`) is for research purposes only and contains sensitive content
 - Techniques demonstrated here are intended for controlled research environments with proper oversight
 - Users are responsible for ensuring their use complies with applicable laws, regulations, and ethical guidelines
 - Do not use this tool to bypass safety measures in production systems without explicit authorization
@@ -263,8 +263,8 @@ Model loaded successfully. Total layers: 36
 ================================================================================
 Dataset: format
   Description: Output format
-  Concept A: data/demo_style_narrative.txt
-  Concept B: data/demo_style_bulleted.txt
+  Concept A: prompts/demo_style_narrative.txt
+  Concept B: prompts/demo_style_bulleted.txt
 ================================================================================
 
 Training format vector...

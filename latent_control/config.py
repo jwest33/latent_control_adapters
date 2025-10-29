@@ -43,8 +43,8 @@ class LatentVectorConfig:
     # Cache configuration
     cache_dir: str = "vectors"
 
-    harmful_data_path: str = "data/harmful.csv"
-    harmless_data_path: str = "data/harmless.csv"
+    harmful_data_path: str = "prompts/harmful.txt"
+    harmless_data_path: str = "prompts/harmless.txt"
     output_dir: str = "output"
 
     save_analysis: bool = False
