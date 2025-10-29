@@ -13,9 +13,19 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from .config import LatentVectorConfig
+from .hardware import print_gpu_info, warn_cpu_performance
+
+# Try to import BitsAndBytesConfig, but gracefully handle if unavailable
+try:
+    from transformers import BitsAndBytesConfig
+
+    BITSANDBYTES_AVAILABLE = True
+except ImportError:
+    BITSANDBYTES_AVAILABLE = False
+    BitsAndBytesConfig = None
 
 
 class VectorCache:
@@ -29,7 +39,7 @@ class VectorCache:
 
     def _load_metadata(self) -> dict:
         if self.metadata_path.exists():
-            with open(self.metadata_path) as f:
+            with open(self.metadata_path, encoding="utf-8") as f:
                 return json.load(f)
         return {}
 
@@ -53,7 +63,7 @@ class VectorCache:
         """Load vector from cache."""
         if name not in self.metadata:
             raise KeyError(f"Vector '{name}' not found in cache")
-        return torch.load(self.cache_dir / f"{name}.pt")
+        return torch.load(self.cache_dir / f"{name}.pt", weights_only=True)
 
     def exists(self, name: str) -> bool:
         """Check if vector exists in cache."""
@@ -94,16 +104,43 @@ class VectorTrainer:
         """Load the model and tokenizer with quantization configuration."""
         print(f"Loading model: {self.config.model_path}")
 
+        # Print hardware info
+        print_gpu_info()
+
+        # Warn if using CPU
+        if self.config.device == "cpu" or not torch.cuda.is_available():
+            warn_cpu_performance()
+
         quantization_config = None
         if self.config.load_in_4bit:
-            quantization_config = BitsAndBytesConfig(
-                load_in_4bit=True, bnb_4bit_compute_dtype=self.config.dtype
-            )
+            if not BITSANDBYTES_AVAILABLE:
+                print("\n" + "!" * 70)
+                print("WARNING: BitsAndBytes not available")
+                print("!" * 70)
+                print("4-bit quantization is enabled in config but bitsandbytes is not installed.")
+                print("This is common on Windows or when bitsandbytes fails to install.")
+                print("\nProceeding with full precision (FP16/FP32) instead.")
+                print("To fix:")
+                print("  1. Install bitsandbytes: pip install bitsandbytes")
+                print("  2. Or disable in config: load_in_4bit: false")
+                print("!" * 70 + "\n")
+            else:
+                try:
+                    quantization_config = BitsAndBytesConfig(
+                        load_in_4bit=True, bnb_4bit_compute_dtype=self.config.dtype
+                    )
+                except Exception as e:
+                    print("\n" + "!" * 70)
+                    print("WARNING: Failed to create BitsAndBytes configuration")
+                    print("!" * 70)
+                    print(f"Error: {e}")
+                    print("\nProceeding with full precision (FP16/FP32) instead.")
+                    print("!" * 70 + "\n")
 
         self.model = AutoModelForCausalLM.from_pretrained(
             self.config.model_path,
             quantization_config=quantization_config,
-            dtype=self.config.dtype,
+            torch_dtype=self.config.dtype,
             trust_remote_code=self.config.trust_remote_code,
             device_map="auto",
         )
@@ -320,7 +357,7 @@ class VectorTrainer:
         Returns:
             Loaded control vector
         """
-        self.direction_vector = torch.load(path)
+        self.direction_vector = torch.load(path, weights_only=True)
         print(f"Control vector loaded from: {path}")
         print(f"Shape: {self.direction_vector.shape}, Norm: {self.direction_vector.norm():.4f}")
 
@@ -655,8 +692,8 @@ def quick_start_example():
         model_id="Qwen/Qwen3-4B-Base",  # Change to your model
         num_pairs=32,
         layer_fraction=0.6,
-        harmful_data_path="data/harmful.csv",
-        harmless_data_path="data/harmless.csv",
+        harmful_data_path="prompts/harmful.txt",
+        harmless_data_path="prompts/harmless.txt",
         output_dir="safety_vectors",
     )
 

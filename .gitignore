@@ -30,7 +30,11 @@ batch_results/
 .idea/
 *.swp
 *.swo
+CLAUDE.md
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Merged models
+models/

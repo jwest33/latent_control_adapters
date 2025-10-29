@@ -10,7 +10,6 @@ dependencies = [
     "tqdm",
     "einops",
     "torch",
-    "bitsandbytes",
     "accelerate",
     "pyyaml",
     "click",
@@ -27,9 +26,18 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 packages = ["latent_control"]
 
+[project.optional-dependencies]
+gpu = ["bitsandbytes>=0.41.0,<1.0.0"]
+export = [
+    "safetensors>=0.4.0",
+    "gguf>=0.1.0",
+    "numpy>=1.24.0",
+    "mistral_common"
+]
+
 [tool.ruff]
 line-length = 100
-target-version = "py38"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = [

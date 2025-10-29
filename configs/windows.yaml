@@ -1,0 +1,47 @@
+# Latent Control System Configuration - Windows Optimized
+#
+# This configuration is optimized for Windows systems.
+#
+# Windows-specific considerations:
+# - 4-bit quantization disabled by default (bitsandbytes has compatibility issues)
+# - If you have a compatible setup and want to enable 4-bit, ensure:
+#   * Visual Studio C++ Build Tools installed
+#   * CUDA 11.1+
+#   * Latest bitsandbytes version
+#
+# Platform: Windows 10/11
+# Typical hardware: NVIDIA GPU (8-16GB VRAM) or CPU-only
+
+model:
+  model_path: "path/to/your/model"  # Replace with your local model path or HuggingFace model ID
+  load_in_4bit: false               # Disabled for Windows compatibility
+  device: "cuda"                    # Auto-detects and falls back to CPU if no GPU
+  layer_fraction: 0.6               # Layer for vector extraction (0.0-1.0)
+  cache_dir: "vectors"              # Where trained vectors are stored
+  alpha_max_norm: 2.0               # Maximum alpha normalization
+  max_new_tokens: 256               # Max tokens to generate
+  temperature: 0.7                  # Sampling temperature
+  top_p: 0.9                        # Nucleus sampling parameter
+  random_seed: 42                   # Reproducibility seed
+  num_pairs: 128                    # Number of training pairs (reduce to 64 if low VRAM)
+
+auto_train: true
+
+datasets:
+  safety:
+    concept_a_path: "prompts/harmful.txt"
+    concept_b_path: "prompts/harmless.txt"
+    description: "Safety control (harmful vs harmless steering)"
+    default_alpha: 2.0
+
+  format:
+    concept_a_path: "prompts/demo_style_narrative.txt"
+    concept_b_path: "prompts/demo_style_bulleted.txt"
+    description: "Output format control"
+    default_alpha: 0.0
+
+  emoji:
+    concept_a_path: "prompts/demo_style_emoji.txt"
+    concept_b_path: "prompts/demo_style_no_emoji.txt"
+    description: "Emoji control"
+    default_alpha: 0.0

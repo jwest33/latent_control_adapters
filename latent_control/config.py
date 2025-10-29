@@ -43,8 +43,8 @@ class LatentVectorConfig:
     # Cache configuration
     cache_dir: str = "vectors"
 
-    harmful_data_path: str = "data/harmful.csv"
-    harmless_data_path: str = "data/harmless.csv"
+    harmful_data_path: str = "prompts/harmful.txt"
+    harmless_data_path: str = "prompts/harmless.txt"
     output_dir: str = "output"
 
     save_analysis: bool = False
@@ -66,6 +66,35 @@ class LatentVectorConfig:
             raise ValueError("num_pairs must be at least 1")
 
         Path(self.cache_dir).mkdir(parents=True, exist_ok=True)
+
+        # Validate hardware compatibility
+        self._validate_hardware_compatibility()
+
+    def _validate_hardware_compatibility(self):
+        """Check for hardware compatibility issues and warn user."""
+        import platform
+
+        # Check for 4-bit quantization on Windows
+        if self.load_in_4bit and platform.system() == "Windows":
+            print("\n" + "!" * 70)
+            print("WARNING: 4-bit quantization on Windows")
+            print("!" * 70)
+            print("BitsAndBytes may have compatibility issues on Windows.")
+            print("If you encounter errors during model loading:")
+            print("  1. Install Visual Studio C++ Build Tools")
+            print("  2. Or set load_in_4bit: false in your config")
+            print("!" * 70 + "\n")
+
+        # Check for CUDA requirement with 4-bit
+        if self.load_in_4bit and not torch.cuda.is_available():
+            print("\n" + "!" * 70)
+            print("WARNING: 4-bit quantization requires CUDA")
+            print("!" * 70)
+            print("4-bit quantization requires a CUDA-capable GPU.")
+            print("No GPU detected. Please either:")
+            print("  1. Set load_in_4bit: false in your config")
+            print("  2. Install CUDA-enabled PyTorch and ensure GPU is available")
+            print("!" * 70 + "\n")
 
     @classmethod
     def from_yaml(cls, path: str) -> "LatentVectorConfig":
@@ -118,6 +147,7 @@ class DatasetConfig:
     concept_b_path: str
     description: str = ""
     default_alpha: float = 0.0
+    cache_name: str = None
 
     def __post_init__(self):
         """Validate paths exist."""
@@ -160,6 +190,7 @@ class SystemConfig:
                 concept_b_path=spec["concept_b_path"],
                 description=spec.get("description", ""),
                 default_alpha=spec.get("default_alpha", 0.0),
+                cache_name=spec.get("cache_name", None),
             )
 
         return cls(model=model, datasets=datasets, auto_train=data.get("auto_train", True))
