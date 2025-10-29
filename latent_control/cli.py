@@ -8,15 +8,13 @@ from pathlib import Path
 
 import click
 
-from latent_control import WorkflowManager, get_preset, quick_start
+from latent_control import AlphaTuner, WorkflowManager, get_preset, quick_start
+from latent_control.config import SystemConfig
 from latent_control.hardware import (
-    check_gpu_availability,
-    get_system_info,
     print_gpu_info,
     suggest_optimal_config,
     validate_config_compatibility,
 )
-from latent_control.config import SystemConfig
 
 
 @click.group()
@@ -31,7 +29,9 @@ def train(config):
     """Auto-train all configured vectors (skips if cached)."""
     config_path = Path(config)
     if not config_path.exists():
-        raise click.BadParameter(f"Config file not found: {config}\nPlease check the path and try again.")
+        raise click.BadParameter(
+            f"Config file not found: {config}\nPlease check the path and try again."
+        )
 
     workflow = WorkflowManager(config)
     workflow.auto_train_all()
@@ -48,7 +48,9 @@ def generate(config, prompt, preset, alphas, max_tokens):
     """Generate text with Latent Control Adapters."""
     config_path = Path(config)
     if not config_path.exists():
-        raise click.BadParameter(f"Config file not found: {config}\nPlease check the path and try again.")
+        raise click.BadParameter(
+            f"Config file not found: {config}\nPlease check the path and try again."
+        )
 
     adapter = quick_start(config)
 
@@ -78,7 +80,9 @@ def list_vectors(config):
     """List all cached vectors."""
     config_path = Path(config)
     if not config_path.exists():
-        raise click.BadParameter(f"Config file not found: {config}\nPlease check the path and try again.")
+        raise click.BadParameter(
+            f"Config file not found: {config}\nPlease check the path and try again."
+        )
 
     workflow = WorkflowManager(config)
 
@@ -152,6 +156,123 @@ def check_hardware(config):
     print("  1. Use the suggested config file for your platform")
     print("  2. Adjust model_path to point to your local model")
     print("  3. Run 'latent-control train' to prepare control vectors")
+
+
+@cli.command()
+@click.option("--config", required=True, help="Path to system config YAML")
+@click.option("--vector", required=True, help="Vector name to analyze (must be trained/cached)")
+@click.option("--prompts", required=True, help="Path to file with test prompts (one per line)")
+@click.option("--alpha-range", help="Custom alpha range as JSON list (e.g., '[-2.5, -2.0, -1.5]')")
+@click.option("--output", help="Save detailed results to JSON file")
+@click.option("--show-responses", is_flag=True, help="Show full responses (verbose output)")
+def analyze_alpha(config, vector, prompts, alpha_range, output, show_responses):
+    """
+    Analyze alpha spectrum to find optimal steering values.
+
+    Tests a single vector across multiple alpha values to identify:
+    - Transition points between compliance and refusal
+    - Quality issues (repetitive, incoherent, gibberish)
+    - Recommended alpha values for production and research
+
+    Example:
+        latent-control analyze-alpha \\
+            --config configs/production.yaml \\
+            --vector safety \\
+            --prompts data/harmful.txt
+    """
+    # Validate config file
+    config_path = Path(config)
+    if not config_path.exists():
+        raise click.BadParameter(
+            f"Config file not found: {config}\nPlease check the path and try again."
+        )
+
+    # Validate prompts file
+    prompts_path = Path(prompts)
+    if not prompts_path.exists():
+        raise click.BadParameter(
+            f"Prompts file not found: {prompts}\nPlease check the path and try again."
+        )
+
+    # Load test prompts
+    try:
+        with open(prompts_path, encoding="utf-8") as f:
+            test_prompts = [line.strip() for line in f if line.strip()]
+    except Exception as e:
+        raise click.ClickException(f"Failed to read prompts file: {e}")
+
+    if not test_prompts:
+        raise click.BadParameter("Prompts file is empty. Please provide at least one test prompt.")
+
+    # Parse alpha range if provided
+    alpha_list = None
+    if alpha_range:
+        try:
+            alpha_list = json.loads(alpha_range)
+            if not isinstance(alpha_list, list) or not all(
+                isinstance(x, (int, float)) for x in alpha_list
+            ):
+                raise ValueError("Alpha range must be a list of numbers")
+        except Exception as e:
+            raise click.BadParameter(f"Invalid alpha range JSON: {e}")
+
+    # Initialize adapter
+    print("Loading model and vectors...")
+    try:
+        adapter = quick_start(config)
+    except Exception as e:
+        raise click.ClickException(f"Failed to initialize adapter: {e}")
+
+    # Initialize tuner
+    tuner = AlphaTuner(adapter)
+
+    # Run analysis
+    try:
+        analysis_results = tuner.analyze_alpha_spectrum(
+            vector_name=vector, test_prompts=test_prompts, alpha_range=alpha_list
+        )
+    except Exception as e:
+        raise click.ClickException(f"Analysis failed: {e}")
+
+    # Display recommendations
+    tuner.print_recommendations(analysis_results)
+
+    # Show sample responses if requested
+    if show_responses:
+        print("\n" + "=" * 80)
+        print("SAMPLE RESPONSES")
+        print("=" * 80)
+
+        results = analysis_results["results"]
+        # Show first prompt for each alpha
+        for alpha, alpha_results in sorted(results.items()):
+            if alpha_results:
+                first = alpha_results[0]
+                refusal = first["refusal_type"].upper().replace("_", " ")
+                quality = (
+                    f" with quality_issue: {first['quality_issue']}"
+                    if first["quality_issue"]
+                    else ""
+                )
+
+                print(f"\nAlpha = {alpha:+.1f} [{refusal}{quality}]")
+                print(f"Prompt: {first['prompt'][:80]}{'...' if len(first['prompt']) > 80 else ''}")
+
+                # Truncate response to 200 chars
+                response = first["response"]
+                if len(response) > 200:
+                    response = response[:200] + "..."
+                print(f"Response: {response}")
+
+    # Save to JSON if requested
+    if output:
+        output_path = Path(output)
+        try:
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(analysis_results, f, indent=2, ensure_ascii=False)
+            print(f"\nOK Results saved to {output}")
+        except Exception as e:
+            raise click.ClickException(f"Failed to save results: {e}")
 
 
 if __name__ == "__main__":
