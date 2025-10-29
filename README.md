@@ -54,15 +54,23 @@ This tool requires a local language model or Hugging Face model access. Supporte
 **To download a model:**
 ```bash
 # Option 1: Use a Hugging Face model ID directly (downloads automatically)
-# Example: "Qwen/Qwen2-7B-Instruct", "meta-llama/Llama-2-7b-hf"
+# Example: "Qwen/Qwen3-4B-Instruct-2507", "meta-llama/Llama-2-7b-hf"
 
 # Option 2: Download manually using huggingface-cli
-huggingface-cli download Qwen/Qwen2-7B-Instruct --local-dir ./models/Qwen2-7B
+huggingface-cli download Qwen/Qwen3-4B-Instruct-2507 --local-dir ./models/Qwen3-4B
 ```
 
 Then update `configs/production.yaml` with your model path or Hugging Face model ID.
 
 ## Installation
+
+### Quick Test
+Before full installation, validate your platform:
+```bash
+python scripts/test_platform.py
+```
+
+### Basic Installation
 
 ```bash
 # With pip
@@ -74,13 +82,80 @@ uv pip install -e .
 uv sync
 ```
 
+### Platform-Specific Installation
+
+#### Windows
+
+```bash
+# Standard installation
+pip install -e .
+
+# For GPU support with 4-bit quantization (optional, may have issues):
+pip install -e ".[gpu]"
+```
+
+**Windows Notes:**
+- BitsAndBytes (4-bit quantization) may have compatibility issues on Windows
+- Requires Visual Studio C++ Build Tools if using bitsandbytes
+- If you encounter errors, use `configs/windows.yaml` (4-bit disabled by default)
+- PyTorch with CUDA: `pip install torch --index-url https://download.pytorch.org/whl/cu118`
+
+#### macOS
+
+```bash
+# Standard installation
+pip install -e .
+
+# PyTorch for Apple Silicon (M1/M2/M3):
+pip install torch torchvision torchaudio
+```
+
+**macOS Notes:**
+- MPS (Metal Performance Shaders) supported for Apple Silicon
+- BitsAndBytes not supported on MPS - use `configs/macos.yaml`
+- 4-bit quantization unavailable on macOS
+
+#### Linux
+
+```bash
+# Standard installation
+pip install -e .
+
+# For GPU support with 4-bit quantization:
+pip install -e ".[gpu]"
+
+# Or install PyTorch with CUDA first:
+pip install torch --index-url https://download.pytorch.org/whl/cu118
+pip install -e ".[gpu]"
+```
+
+**Linux Notes:**
+- Best platform for full feature support
+- 4-bit quantization fully supported with CUDA
+- Use `configs/linux.yaml` for optimal settings
+
 ## Quick Start
 
+### 1. Check Hardware Compatibility
+```bash
+latent-control check-hardware
+# Or validate a specific config:
+latent-control check-hardware --config configs/windows.yaml
+```
+
+### 2. Choose Platform-Specific Config
+- **Windows**: `configs/windows.yaml` (4-bit disabled, CUDA/CPU)
+- **macOS**: `configs/macos.yaml` (MPS/CPU support)
+- **Linux**: `configs/linux.yaml` (full CUDA support with 4-bit)
+- **Default**: `configs/production.yaml` (safe defaults)
+
+### 3. Python Quick Start
 ```python
 from latent_control import quick_start
 
 # Auto-train vectors and get adapter
-adapter = quick_start("configs/production.yaml")
+# Use platform-specific config for best results
+adapter = quick_start("configs/windows.yaml")  # or macos.yaml, linux.yaml
 
 # Generate with steering
 response = adapter.generate(
@@ -93,17 +168,24 @@ print(response)
 ## CLI
 
 ```bash
-# Train all vectors
-latent-control train --config configs/production.yaml
+# Check hardware and get config recommendation
+latent-control check-hardware
+
+# Train all vectors (use platform-specific config)
+latent-control train --config configs/windows.yaml
 
 # Generate with steering
 latent-control generate \
-    --config configs/production.yaml \
+    --config configs/windows.yaml \
     --prompt "Explain quantum computing" \
     --alphas '{"safety": 2.0, "formality": 1.5}'
 
+# List cached vectors
+latent-control list-vectors --config configs/windows.yaml
+
 # With uv
-uv run latent-control train --config configs/production.yaml
+uv run latent-control check-hardware
+uv run latent-control train --config configs/windows.yaml
 ```
 
 ## Python API
@@ -340,25 +422,50 @@ Typically, **"jailbreak"** refers to *leveraging control vectors* to **unlock or
 
 ## Troubleshooting
 
-### Common Issues
+### Platform-Specific Issues
 
+#### Windows
+**BitsAndBytes installation fails**
+- This is common on Windows - use `configs/windows.yaml` (has 4-bit disabled)
+- If needed, install Visual Studio C++ Build Tools
+- Alternative: `pip install bitsandbytes --no-deps` then try again
+
+**CUDA not detected on Windows**
+- Install CUDA Toolkit 11.8+
+- Install PyTorch with CUDA: `pip install torch --index-url https://download.pytorch.org/whl/cu118`
+- Verify: `python -c "import torch; print(torch.cuda.is_available())"`
+
+#### macOS
+**MPS not available**
+- MPS requires macOS 12.3+ and Apple Silicon (M1/M2/M3)
+- Intel Macs will use CPU only
+- Verify: `python -c "import torch; print(torch.backends.mps.is_available())"`
+
+**Slow performance on macOS**
+- Use `configs/macos.yaml` with reduced `num_pairs` and `max_new_tokens`
+- MPS is slower than CUDA - expect longer training times
+
+#### Linux
 **CUDA out of memory**
-- Reduce batch size or number of training pairs in config
+- Reduce `num_pairs` in config (try 64 or 32)
 - Enable 4-bit quantization: `load_in_4bit: true`
 - Use smaller model or reduce `max_new_tokens`
 
+### General Issues
+
 **Model not loading**
-- Verify model path in `configs/production.yaml` is correct
+- Verify model path in your config is correct
 - Ensure model is Hugging Face compatible
-- Check CUDA/PyTorch installation: `python -c "import torch; print(torch.cuda.is_available())"`
+- Check available VRAM matches model requirements
 
 **Import errors**
-- Reinstall dependencies: `pip install -e .` or `uv sync`
+- Run: `python scripts/test_platform.py` to diagnose
+- Reinstall dependencies: `pip install -e .`
 - Verify Python version: `python --version` (must be 3.11+)
 
 **Vectors not saving**
 - Check `cache_dir` path exists and is writable
-- Ensure sufficient disk space
+- Ensure sufficient disk space (vectors are ~100MB-1GB each)
 
 **Poor steering results**
 - Experiment with different alpha values (try range -10 to 10)
@@ -367,12 +474,16 @@ Typically, **"jailbreak"** refers to *leveraging control vectors* to **unlock or
 - Verify training data quality and diversity
 
 **Performance is slow**
-- Enable GPU: verify `device: "cuda"` in config
-- Use quantization: `load_in_4bit: true`
-- Reduce `max_new_tokens`
-- Try with and without `uv`
+- Run `latent-control check-hardware` to see GPU status
+- Use platform-specific config for your system
+- Reduce `max_new_tokens` and `num_pairs`
 
-For additional help, please [open an issue](https://github.com/jwest33/latent_control_adapters/issues) on GitHub.
+### Getting Help
+
+1. Run `python scripts/test_platform.py` for diagnostics
+2. Run `latent-control check-hardware --config <your-config>` to validate
+3. Check [GitHub Issues](https://github.com/jwest33/latent_control_adapters/issues)
+4. Include output from test_platform.py when reporting issues
 
 ## Contributing
 

@@ -1,0 +1,48 @@
+# Latent Control System Configuration - Linux Optimized
+#
+# This configuration is optimized for Linux systems with CUDA support.
+#
+# Linux-specific considerations:
+# - Best platform for full feature support
+# - 4-bit quantization fully supported with proper CUDA setup
+# - Optimal performance with NVIDIA GPUs
+#
+# Platform: Linux (Ubuntu, Debian, RHEL, etc.)
+# Typical hardware: NVIDIA GPU (8GB+ VRAM recommended)
+# Requirements:
+# - CUDA 11.8+ or 12.x
+# - NVIDIA drivers 525+ (for CUDA 12.x)
+
+model:
+  model_path: "path/to/your/model"  # Replace with your local model path or HuggingFace model ID
+  load_in_4bit: true                # Fully supported on Linux with CUDA
+  device: "cuda"                    # CUDA recommended, auto-falls back to CPU
+  layer_fraction: 0.6               # Layer for vector extraction (0.0-1.0)
+  cache_dir: "vectors"              # Where trained vectors are stored
+  alpha_max_norm: 2.0               # Maximum alpha normalization
+  max_new_tokens: 300               # Higher for better GPU utilization
+  temperature: 0.7                  # Sampling temperature
+  top_p: 0.9                        # Nucleus sampling parameter
+  random_seed: 42                   # Reproducibility seed
+  num_pairs: 128                    # Full training pairs (reduce if <8GB VRAM)
+
+auto_train: true
+
+datasets:
+  safety:
+    concept_a_path: "data/harmful.txt"
+    concept_b_path: "data/harmless.txt"
+    description: "Safety control (harmful vs harmless steering)"
+    default_alpha: 2.0
+
+  format:
+    concept_a_path: "data/demo_style_narrative.txt"
+    concept_b_path: "data/demo_style_bulleted.txt"
+    description: "Output format control"
+    default_alpha: 0.0
+
+  emoji:
+    concept_a_path: "data/demo_style_emoji.txt"
+    concept_b_path: "data/demo_style_no_emoji.txt"
+    description: "Emoji control"
+    default_alpha: 0.0

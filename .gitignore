@@ -30,6 +30,7 @@ batch_results/
 .idea/
 *.swp
 *.swo
+CLAUDE.md
 
 # OS
 .DS_Store
