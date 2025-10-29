@@ -10,6 +10,7 @@ import click
 
 from latent_control import AlphaTuner, WorkflowManager, get_preset, quick_start
 from latent_control.config import SystemConfig
+from latent_control.export import ModelExporter, VectorMerger, validate_export_config
 from latent_control.hardware import (
     print_gpu_info,
     suggest_optimal_config,
@@ -345,6 +346,287 @@ def analyze_alpha(config, vector, prompts, alpha_range, output):
                 print(f"\nResults saved to {output_path}")
             except Exception as e:
                 raise click.ClickException(f"Failed to save results: {e}")
+
+
+@cli.command()
+@click.option(
+    "--config",
+    required=True,
+    help="Config name or path (e.g., 'production', 'configs/production.yaml')",
+)
+@click.option(
+    "--output",
+    required=True,
+    type=click.Path(),
+    help="Output path for the exported .safetensors file",
+)
+@click.option(
+    "--alphas",
+    required=True,
+    help='JSON dict of vector names to alpha values (e.g., \'{"safety": -2.0, "formality": 1.5}\')',
+)
+def export_safetensors(config: str, output: str, alphas: str):
+    """
+    Export model with merged vectors to SafeTensors format.
+
+    This creates a standalone model file with the specified vectors baked in
+    at fixed alpha values. The resulting model can be loaded with standard
+    HuggingFace transformers and will exhibit the steering behavior.
+
+    Example:
+        latent-control export-safetensors --config production \\
+            --output models/qwen-steered.safetensors \\
+            --alphas '{"safety": -2.0, "formality": 1.5}'
+    """
+    try:
+        # Parse alphas JSON
+        try:
+            alphas_dict = json.loads(alphas)
+        except json.JSONDecodeError as e:
+            raise click.BadParameter(f"Invalid JSON for --alphas: {e}")
+
+        if not isinstance(alphas_dict, dict):
+            raise click.BadParameter("--alphas must be a JSON object/dict")
+
+        # Resolve config path
+        config_path = resolve_path(config, ["configs", "."], [".yaml", ".yml", ""])
+        print(f"Loading config: {config_path}")
+
+        # Ensure .safetensors extension
+        from pathlib import Path
+
+        output_path = Path(output)
+        if output_path.suffix.lower() != ".safetensors":
+            output_path = output_path.with_suffix(".safetensors")
+            output = str(output_path)
+            print(f"Note: Added .safetensors extension to output path: {output}")
+
+        # Load config and setup workflow
+        system_config = SystemConfig.from_yaml(config_path)
+        workflow = WorkflowManager(str(config_path))
+
+        # Auto-train any missing vectors
+        print("\nChecking for trained vectors...")
+        workflow.auto_train_all()
+
+        # Load the vectors
+        from latent_control.core import VectorCache
+
+        cache = VectorCache(system_config.model.cache_dir)
+        vectors_dict = {}
+
+        print(f"\nLoading {len(alphas_dict)} vectors...")
+        for vector_name in alphas_dict.keys():
+            if not cache.exists(vector_name):
+                raise click.ClickException(
+                    f"Vector '{vector_name}' not found in cache. "
+                    f"Available: {cache.list_vectors()}"
+                )
+            vectors_dict[vector_name] = cache.load(vector_name)
+            print(f"  ✓ Loaded '{vector_name}'")
+
+        # Validate export configuration
+        is_valid, errors = validate_export_config(
+            vectors_dict, alphas_dict, system_config.model
+        )
+        if not is_valid:
+            for error in errors:
+                print(f"  ⚠ {error}")
+            if not click.confirm("\nProceed anyway?"):
+                raise click.Abort()
+
+        # Get the adapter to access model and tokenizer
+        adapter = workflow.get_adapter()
+
+        # Calculate layer index
+        num_layers = len(adapter.model.model.layers)
+        layer_fraction = system_config.model.layer_fraction
+        layer_idx = int(num_layers * layer_fraction)
+
+        print(f"\nMerging vectors into model (layer {layer_idx}/{num_layers})...")
+
+        # Create merger and merge vectors
+        merger = VectorMerger(
+            adapter.model,
+            adapter.tokenizer,
+            layer_idx,
+            position=system_config.model.token_position,
+        )
+        merged_model = merger.merge_vectors_to_weights(vectors_dict, alphas_dict)
+
+        # Prepare metadata
+        metadata = {
+            "export_type": "latent_control_merged",
+            "vectors": list(alphas_dict.keys()),
+            "alphas": json.dumps(alphas_dict),
+            "layer_idx": str(layer_idx),
+            "layer_fraction": str(layer_fraction),
+            "base_model": system_config.model.model_path,
+        }
+
+        # Export to SafeTensors
+        print(f"\nExporting to SafeTensors: {output}")
+        exporter = ModelExporter(merged_model, adapter.tokenizer)
+        exporter.export_to_safetensors(output, metadata=metadata)
+
+        print("\n✓ Export complete!")
+        print(f"  Model: {output}")
+        print(f"  Vectors: {', '.join(alphas_dict.keys())}")
+        print(f"  Alphas: {alphas_dict}")
+
+    except click.Abort:
+        print("\nExport cancelled.")
+        raise SystemExit(1)
+    except Exception as e:
+        raise click.ClickException(f"Export failed: {e}")
+
+
+@cli.command()
+@click.option(
+    "--config",
+    required=True,
+    help="Config name or path (e.g., 'production', 'configs/production.yaml')",
+)
+@click.option(
+    "--output",
+    required=True,
+    type=click.Path(),
+    help="Output path for the exported .gguf file",
+)
+@click.option(
+    "--alphas",
+    required=True,
+    help='JSON dict of vector names to alpha values (e.g., \'{"safety": -2.0}\')',
+)
+@click.option(
+    "--quantization",
+    default="Q4_K_M",
+    help="GGUF quantization type (Q4_K_M, Q5_K_S, Q8_0, f16, etc.)",
+)
+def export_gguf(config: str, output: str, alphas: str, quantization: str):
+    """
+    Export model with merged vectors to GGUF format for llama.cpp.
+
+    This creates a quantized GGUF file suitable for inference with llama.cpp
+    or other GGUF-compatible engines. The vectors are baked in at fixed alphas.
+
+    Requires llama.cpp to be installed for optimal conversion. Without it,
+    will attempt direct conversion with limited model support.
+
+    Example:
+        latent-control export-gguf --config production \\
+            --output models/qwen-steered-q4.gguf \\
+            --alphas '{"safety": -2.0}' \\
+            --quantization Q4_K_M
+    """
+    try:
+        # Parse alphas JSON
+        try:
+            alphas_dict = json.loads(alphas)
+        except json.JSONDecodeError as e:
+            raise click.BadParameter(f"Invalid JSON for --alphas: {e}")
+
+        if not isinstance(alphas_dict, dict):
+            raise click.BadParameter("--alphas must be a JSON object/dict")
+
+        # Resolve config path
+        config_path = resolve_path(config, ["configs", "."], [".yaml", ".yml", ""])
+        print(f"Loading config: {config_path}")
+
+        # Ensure .gguf extension
+        from pathlib import Path
+
+        output_path = Path(output)
+        if output_path.suffix.lower() != ".gguf":
+            output_path = output_path.with_suffix(".gguf")
+            output = str(output_path)
+            print(f"Note: Added .gguf extension to output path: {output}")
+
+        # Load config and setup workflow
+        system_config = SystemConfig.from_yaml(config_path)
+        workflow = WorkflowManager(str(config_path))
+
+        # Auto-train any missing vectors
+        print("\nChecking for trained vectors...")
+        workflow.auto_train_all()
+
+        # Load the vectors
+        from latent_control.core import VectorCache
+
+        cache = VectorCache(system_config.model.cache_dir)
+        vectors_dict = {}
+
+        print(f"\nLoading {len(alphas_dict)} vectors...")
+        for vector_name in alphas_dict.keys():
+            if not cache.exists(vector_name):
+                raise click.ClickException(
+                    f"Vector '{vector_name}' not found in cache. "
+                    f"Available: {cache.list_vectors()}"
+                )
+            vectors_dict[vector_name] = cache.load(vector_name)
+            print(f"  ✓ Loaded '{vector_name}'")
+
+        # Validate export configuration
+        is_valid, errors = validate_export_config(
+            vectors_dict, alphas_dict, system_config.model
+        )
+        if not is_valid:
+            for error in errors:
+                print(f"  ⚠ {error}")
+            if not click.confirm("\nProceed anyway?"):
+                raise click.Abort()
+
+        # Get the adapter to access model and tokenizer
+        adapter = workflow.get_adapter()
+
+        # Calculate layer index
+        num_layers = len(adapter.model.model.layers)
+        layer_fraction = system_config.model.layer_fraction
+        layer_idx = int(num_layers * layer_fraction)
+
+        print(f"\nMerging vectors into model (layer {layer_idx}/{num_layers})...")
+
+        # Create merger and merge vectors
+        merger = VectorMerger(
+            adapter.model,
+            adapter.tokenizer,
+            layer_idx,
+            position=system_config.model.token_position,
+        )
+        merged_model = merger.merge_vectors_to_weights(vectors_dict, alphas_dict)
+
+        # Prepare metadata
+        metadata = {
+            "export_type": "latent_control_merged",
+            "vectors": list(alphas_dict.keys()),
+            "alphas": alphas_dict,  # Keep as dict for GGUF
+            "layer_idx": layer_idx,
+            "layer_fraction": layer_fraction,
+            "base_model": system_config.model.model_path,
+            "quantization": quantization,
+        }
+
+        # Export to GGUF
+        print(f"\nExporting to GGUF: {output}")
+        print(f"Quantization: {quantization}")
+        print(
+            "\nNote: For best results, ensure llama.cpp is installed with convert.py available."
+        )
+
+        exporter = ModelExporter(merged_model, adapter.tokenizer)
+        exporter.export_to_gguf(output, quantization=quantization, metadata=metadata)
+
+        print("\n✓ Export complete!")
+        print(f"  Model: {output}")
+        print(f"  Vectors: {', '.join(alphas_dict.keys())}")
+        print(f"  Alphas: {alphas_dict}")
+        print(f"  Quantization: {quantization}")
+
+    except click.Abort:
+        print("\nExport cancelled.")
+        raise SystemExit(1)
+    except Exception as e:
+        raise click.ClickException(f"Export failed: {e}")
 
 
 if __name__ == "__main__":

@@ -35,3 +35,6 @@ CLAUDE.md
 # OS
 .DS_Store
 Thumbs.db
+
+# Merged models
+models/
