@@ -249,7 +249,7 @@ uv run ruff format .
 Update or train new control vectors.
 
 ```bash
-$ uv run latent-control train --config configs/production.yaml
+latent-control train --config configs/production.yaml
 
 ================================================================================
 AUTO-TRAINING PIPELINE
