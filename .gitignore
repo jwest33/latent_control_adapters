@@ -20,6 +20,8 @@ uv.lock
 # Vectors (cached, regenerable)
 vectors/*.pt
 vectors/metadata.json
+*.gguf
+test.txt
 
 # Analysis outputs
 analysis_reports/
@@ -30,7 +32,6 @@ batch_results/
 .idea/
 *.swp
 *.swo
-CLAUDE.md
 
 # OS
 .DS_Store

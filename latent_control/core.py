@@ -52,12 +52,23 @@ class VectorCache:
         vector_path = self.cache_dir / f"{name}.pt"
         torch.save(vector, vector_path)
 
-        self.metadata[name] = {
+        # Prepare full metadata
+        full_metadata = {
             "path": str(vector_path),
             "created": datetime.now().isoformat(),
             **(metadata or {}),
         }
+
+        # Save to central metadata.json
+        self.metadata[name] = full_metadata
         self._save_metadata()
+
+        # Save individual metadata file
+        individual_metadata_path = self.cache_dir / f"{name}_metadata.json"
+        with open(individual_metadata_path, "w", encoding="utf-8") as f:
+            json.dump(full_metadata, f, indent=2)
+
+        print(f"  Metadata saved to {individual_metadata_path.name}")
 
     def load(self, name: str) -> torch.Tensor:
         """Load vector from cache."""
@@ -736,7 +747,7 @@ def quick_start_example():
     # 7. Cleanup
     steering.disable_steering()
 
-    print("\n✓ Quick start example completed!")
+    print("\nQuick start example completed!")
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ model:
   model_path: "C:/models/Qwen3-4B-Instruct-2507-st"  # Replace with your local model path or HuggingFace model ID
   load_in_4bit: false               # Disabled by default for compatibility
   device: "cuda"                    # Auto-detects and falls back to CPU if unavailable
-  layer_fraction: 0.6               # Layer for vector extraction (0.0-1.0)
+  layer_fraction: 0.65               # Layer for vector extraction (0.0-1.0)
   cache_dir: "vectors"              # Directory for cached trained vectors
   alpha_max_norm: 2.0               # Maximum alpha value normalization
   max_new_tokens: 256               # Maximum tokens to generate per request
@@ -32,16 +32,4 @@ datasets:
     concept_a_path: "prompts/harmful.txt"
     concept_b_path: "prompts/harmless.txt"
     description: "Safety control (harmful vs harmless steering)"
-    default_alpha: 2.0
-
-  format:
-    concept_a_path: "prompts/demo_style_narrative.txt"
-    concept_b_path: "prompts/demo_style_bulleted.txt"
-    description: "Output format control"
-    default_alpha: 0.0
-
-  emoji:
-    concept_a_path: "prompts/demo_style_emoji.txt"
-    concept_b_path: "prompts/demo_style_no_emoji.txt"
-    description: "Emoji control"
-    default_alpha: 0.0
+    default_alpha: -45.0
