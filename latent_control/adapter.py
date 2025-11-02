@@ -5,7 +5,7 @@ Provides MultiVectorAdapter for combining multiple steering vectors
 and WorkflowManager for config-driven auto-training pipeline.
 """
 
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import torch
 
@@ -259,7 +259,9 @@ class WorkflowManager:
 
             # Train vector
             print(f"\nTraining {name} vector...")
-            vector = self._train_vector(dataset.concept_a_path, dataset.concept_b_path)
+            vector, training_metadata = self._train_vector(
+                dataset.concept_a_path, dataset.concept_b_path
+            )
 
             # Analyze
             analysis = self._analyze_vector(vector)
@@ -269,6 +271,17 @@ class WorkflowManager:
                 cache_name,
                 vector,
                 metadata={
+                    "model": {
+                        "name": self.config.model.model_path,
+                        "num_layers": training_metadata["num_layers"],
+                        "layer_fraction": training_metadata["layer_fraction"],
+                        "token_position": training_metadata["token_position"],
+                    },
+                    "training": {
+                        "num_pairs": training_metadata["num_pairs"],
+                        "layer_used": training_metadata["layer_used"],
+                        "normalize_vector": self.config.model.normalize_vector,
+                    },
                     "dataset": {
                         "concept_a_path": dataset.concept_a_path,
                         "concept_b_path": dataset.concept_b_path,
@@ -289,8 +302,12 @@ class WorkflowManager:
         print(f"  Total:   {len(self.config.datasets)} vectors")
         print(f"{'=' * 80}\n")
 
-    def _train_vector(self, concept_a_path: str, concept_b_path: str) -> torch.Tensor:
-        """Train a single direction vector."""
+    def _train_vector(self, concept_a_path: str, concept_b_path: str) -> Tuple[torch.Tensor, dict]:
+        """Train a single direction vector.
+
+        Returns:
+            Tuple of (vector, training_metadata)
+        """
         # Load data
         with open(concept_a_path, encoding="utf-8") as f:
             concept_a = [line.strip() for line in f.readlines() if line.strip()]
@@ -305,6 +322,10 @@ class WorkflowManager:
         sampled_a = random.sample(concept_a, num_pairs)
         sampled_b = random.sample(concept_b, num_pairs)
 
+        # Calculate layer information
+        num_layers = len(self.trainer.model.model.layers)
+        target_layer = int(num_layers * self.config.model.layer_fraction)
+
         # Extract hidden states
         print(f"  Extracting hidden states for {num_pairs} pairs...")
         hidden_a = self.trainer.get_hidden_states(sampled_a, desc="Concept A")
@@ -317,7 +338,16 @@ class WorkflowManager:
         if self.config.model.normalize_vector:
             direction = direction / (direction.norm() + 1e-8)
 
-        return direction
+        # Prepare training metadata
+        training_metadata = {
+            "num_pairs": num_pairs,
+            "num_layers": num_layers,
+            "layer_used": target_layer,
+            "layer_fraction": self.config.model.layer_fraction,
+            "token_position": self.config.model.token_position,
+        }
+
+        return direction, training_metadata
 
     def _analyze_vector(self, vector: torch.Tensor) -> dict:
         """Analyze a trained vector."""

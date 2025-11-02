@@ -150,12 +150,12 @@ class VectorMerger:
             mlp_bias = target_layer.mlp.down_proj.bias
             logger.info(f"Merging into MLP down_proj bias at layer {self.layer_idx}")
             mlp_bias.data += combined_vector
-            logger.info("✓ Successfully merged vectors into MLP bias")
+            logger.info("Successfully merged vectors into MLP bias")
         elif has_o_proj_bias:
             o_proj_bias = target_layer.self_attn.o_proj.bias
             logger.info(f"Merging into attention o_proj bias at layer {self.layer_idx}")
             o_proj_bias.data += combined_vector
-            logger.info("✓ Successfully merged vectors into attention output bias")
+            logger.info("Successfully merged vectors into attention output bias")
         elif has_ln_bias:
             # Find which layernorm has bias
             if (
@@ -170,9 +170,9 @@ class VectorMerger:
 
             logger.info(f"Merging into {ln_name} bias at layer {self.layer_idx}")
             ln_bias.data += combined_vector
-            logger.info("✓ Successfully merged vectors into LayerNorm bias")
+            logger.info("Successfully merged vectors into LayerNorm bias")
 
-        logger.info("✓ Tensor count unchanged - GGUF export compatible!")
+        logger.info("Tensor count unchanged - GGUF export compatible!")
 
         return self.model
 
@@ -360,8 +360,8 @@ class ModelExporter:
                     if binary_dir:
                         # Found binaries but not Python script
                         error_msg = (
-                            "✓ Found llama.cpp binaries at: {}\n".format(binary_dir) +
-                            "✗ Missing Python conversion script: convert_hf_to_gguf.py\n\n"
+                            "Found llama.cpp binaries at: {}\n".format(binary_dir) +
+                            "Missing Python conversion script: convert_hf_to_gguf.py\n\n"
                             "Your llama.cpp installation has executables but not the source repository.\n\n"
                             "╔═══════════════════════════════════════════════════════════════════╗\n"
                             "║  SOLUTION: Get the llama.cpp source repository                   ║\n"

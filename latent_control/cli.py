@@ -10,6 +10,7 @@ import click
 
 from latent_control import AlphaTuner, WorkflowManager, get_preset, quick_start
 from latent_control.config import SystemConfig
+from latent_control.convert_to_gguf import GGUFConverter
 from latent_control.export import ModelExporter, VectorMerger, validate_export_config
 from latent_control.hardware import (
     print_gpu_info,
@@ -215,19 +216,19 @@ def check_hardware(config):
             validation = validate_config_compatibility(config_dict)
 
             if validation["compatible"]:
-                print("✓ Configuration is compatible with your hardware")
+                print("Configuration is compatible with your hardware")
             else:
-                print("✗ Configuration has compatibility issues")
+                print("Configuration has compatibility issues")
 
             if validation["warnings"]:
                 print("\nWarnings:")
                 for warning in validation["warnings"]:
-                    print(f"  ⚠ {warning}")
+                    print(f"{warning}")
 
             if validation["errors"]:
                 print("\nErrors:")
                 for error in validation["errors"]:
-                    print(f"  ✗ {error}")
+                    print(f"{error}")
 
             print("=" * 70)
 
@@ -423,7 +424,7 @@ def export_safetensors(config: str, output: str, alphas: str):
                     f"Available: {cache.list_vectors()}"
                 )
             vectors_dict[vector_name] = cache.load(vector_name)
-            print(f"  ✓ Loaded '{vector_name}'")
+            print(f"  Loaded '{vector_name}'")
 
         # Validate export configuration
         is_valid, errors = validate_export_config(
@@ -431,7 +432,7 @@ def export_safetensors(config: str, output: str, alphas: str):
         )
         if not is_valid:
             for error in errors:
-                print(f"  ⚠ {error}")
+                print(f"  {error}")
             if not click.confirm("\nProceed anyway?"):
                 raise click.Abort()
 
@@ -469,7 +470,7 @@ def export_safetensors(config: str, output: str, alphas: str):
         exporter = ModelExporter(merged_model, adapter.tokenizer)
         exporter.export_to_safetensors(output, metadata=metadata)
 
-        print("\n✓ Export complete!")
+        print("\nExport complete!")
         print(f"  Model: {output}")
         print(f"  Vectors: {', '.join(alphas_dict.keys())}")
         print(f"  Alphas: {alphas_dict}")
@@ -564,7 +565,7 @@ def export_gguf(config: str, output: str, alphas: str, quantization: str):
                     f"Available: {cache.list_vectors()}"
                 )
             vectors_dict[vector_name] = cache.load(vector_name)
-            print(f"  ✓ Loaded '{vector_name}'")
+            print(f"  Loaded '{vector_name}'")
 
         # Validate export configuration
         is_valid, errors = validate_export_config(
@@ -572,7 +573,7 @@ def export_gguf(config: str, output: str, alphas: str, quantization: str):
         )
         if not is_valid:
             for error in errors:
-                print(f"  ⚠ {error}")
+                print(f"  {error}")
             if not click.confirm("\nProceed anyway?"):
                 raise click.Abort()
 
@@ -616,7 +617,7 @@ def export_gguf(config: str, output: str, alphas: str, quantization: str):
         exporter = ModelExporter(merged_model, adapter.tokenizer)
         exporter.export_to_gguf(output, quantization=quantization, metadata=metadata)
 
-        print("\n✓ Export complete!")
+        print("\nExport complete!")
         print(f"  Model: {output}")
         print(f"  Vectors: {', '.join(alphas_dict.keys())}")
         print(f"  Alphas: {alphas_dict}")
@@ -627,6 +628,100 @@ def export_gguf(config: str, output: str, alphas: str, quantization: str):
         raise SystemExit(1)
     except Exception as e:
         raise click.ClickException(f"Export failed: {e}")
+
+
+@cli.command()
+@click.option(
+    "--config",
+    help="Config name or path (e.g., 'production', 'configs/production.yaml') [optional]",
+)
+@click.option(
+    "--cache-dir",
+    help="Override cache directory (default: uses config's cache_dir or './vectors')",
+)
+@click.option(
+    "--vector",
+    required=True,
+    help="Name of the control vector to convert (e.g., 'safety')",
+)
+@click.option(
+    "--output",
+    required=True,
+    type=click.Path(),
+    help="Output GGUF file path",
+)
+@click.option(
+    "--model-layers",
+    type=int,
+    help="Total number of layers in the model (default: auto-detect from metadata)",
+)
+@click.option(
+    "--layer-fraction",
+    type=float,
+    help="Target layer as fraction of total layers (default: auto-detect from metadata)",
+)
+@click.option(
+    "--description",
+    help="Optional description for the control vector (default: auto-detect from metadata)",
+)
+def convert_to_gguf(config, cache_dir, vector, output, model_layers, layer_fraction, description):
+    """
+    Convert a control vector to llama.cpp GGUF format.
+
+    This creates a standalone GGUF control vector file that can be used with
+    llama.cpp's --control-vector-scaled flag. The converter automatically reads
+    metadata from the vector's JSON file to determine optimal settings.
+
+    Examples:
+        # Using config to find cache directory
+        latent-control convert-to-gguf --config production \\
+            --vector safety --output safety.gguf
+
+        # Specifying cache directory directly
+        latent-control convert-to-gguf --cache-dir ./vectors \\
+            --vector safety --output safety.gguf
+
+        # Override metadata settings
+        latent-control convert-to-gguf --config production \\
+            --vector safety --output safety.gguf \\
+            --model-layers 48 --layer-fraction 0.7
+    """
+    try:
+        # Determine cache directory
+        if cache_dir:
+            vector_cache_dir = cache_dir
+        elif config:
+            config_path = resolve_path(config, ["configs", "."], [".yaml", ".yml", ""])
+            system_config = SystemConfig.from_yaml(config_path)
+            vector_cache_dir = system_config.model.cache_dir
+            print(f"Using cache directory from config: {vector_cache_dir}")
+        else:
+            vector_cache_dir = "./vectors"
+            print(f"Using default cache directory: {vector_cache_dir}")
+
+        # Ensure .gguf extension
+        output_path = Path(output)
+        if output_path.suffix.lower() != ".gguf":
+            output_path = output_path.with_suffix(".gguf")
+            output = str(output_path)
+            print(f"Note: Added .gguf extension to output path: {output}\n")
+
+        # Create converter and convert
+        converter = GGUFConverter(cache_dir=vector_cache_dir)
+        converter.convert(
+            vector,
+            output,
+            model_layers=model_layers,
+            layer_fraction=layer_fraction,
+            description=description
+        )
+
+    except click.BadParameter as e:
+        raise e
+    except FileNotFoundError as e:
+        raise click.ClickException(str(e))
+    except Exception as e:
+        raise click.ClickException(f"Conversion failed: {e}")
 
 
 if __name__ == "__main__":

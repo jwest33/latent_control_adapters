@@ -23,10 +23,10 @@ def test_python_version():
     print(f"Required: Python {required[0]}.{required[1]}+")
 
     if current >= required:
-        print("✓ Python version is compatible")
+        print("Python version is compatible")
         return True
     else:
-        print("✗ Python version is too old")
+        print("Python version is too old")
         print(f"Please upgrade to Python {required[0]}.{required[1]} or higher")
         return False
 
@@ -50,9 +50,9 @@ def test_core_dependencies():
     for module, name in dependencies.items():
         try:
             __import__(module)
-            print(f"✓ {name:30s} OK")
+            print(f"{name:30s} OK")
         except ImportError as e:
-            print(f"✗ {name:30s} FAILED: {e}")
+            print(f"{name:30s} FAILED: {e}")
             all_ok = False
 
     return all_ok
@@ -67,10 +67,10 @@ def test_optional_dependencies():
     try:
         import bitsandbytes
 
-        print(f"✓ BitsAndBytes {bitsandbytes.__version__:15s} OK")
+        print(f"BitsAndBytes {bitsandbytes.__version__:15s} OK")
         bnb_available = True
     except ImportError:
-        print("⚠ BitsAndBytes                 NOT INSTALLED (4-bit quantization unavailable)")
+        print("BitsAndBytes                 NOT INSTALLED (4-bit quantization unavailable)")
         bnb_available = False
 
     return {"bitsandbytes": bnb_available}
@@ -111,7 +111,7 @@ def test_hardware():
         }
 
     except Exception as e:
-        print(f"✗ Hardware detection failed: {e}")
+        print(f"Hardware detection failed: {e}")
         return {"cuda": False, "mps": False, "device_count": 0}
 
 
@@ -124,10 +124,10 @@ def test_latent_control_import():
     try:
         from latent_control import quick_start, WorkflowManager, get_preset
 
-        print("✓ latent_control package imports successfully")
+        print("latent_control package imports successfully")
         return True
     except ImportError as e:
-        print(f"✗ Failed to import latent_control: {e}")
+        print(f"Failed to import latent_control: {e}")
         print("\nTo fix, run from repository root:")
         print("  pip install -e .")
         return False
@@ -150,9 +150,9 @@ def test_config_files():
     for config in configs:
         path = Path(config)
         if path.exists():
-            print(f"✓ {config:30s} EXISTS")
+            print(f"{config:30s} EXISTS")
         else:
-            print(f"✗ {config:30s} MISSING")
+            print(f"{config:30s} MISSING")
             all_exist = False
 
     return all_exist
@@ -187,11 +187,11 @@ def suggest_platform_config(hardware_info):
         print("  - Default safe configuration")
 
     if hardware_info["cuda"]:
-        print(f"\n✓ GPU acceleration available ({hardware_info['device_count']} device(s))")
+        print(f"\nGPU acceleration available ({hardware_info['device_count']} device(s))")
     elif hardware_info["mps"]:
-        print("\n✓ MPS (Apple Silicon) acceleration available")
+        print("\nMPS (Apple Silicon) acceleration available")
     else:
-        print("\n⚠ No GPU acceleration detected - will use CPU (slower)")
+        print("\nNo GPU acceleration detected - will use CPU (slower)")
 
 
 def main():
@@ -221,17 +221,17 @@ def main():
     all_critical_ok = results["python"] and results["core_deps"] and results["latent_control"]
 
     if all_critical_ok:
-        print("✓ All critical checks passed")
+        print("All critical checks passed")
         print("\nYou can now:")
         print("  1. Edit your chosen config file (set model_path)")
         print("  2. Run: latent-control train --config <your-config.yaml>")
         print("  3. Run: latent-control generate --config <your-config.yaml> --prompt 'your prompt'")
     else:
-        print("✗ Some critical checks failed")
+        print("Some critical checks failed")
         print("\nPlease fix the errors above before proceeding")
 
     if not results["optional_deps"]["bitsandbytes"]:
-        print("\n⚠ Note: BitsAndBytes not installed")
+        print("\nNote: BitsAndBytes not installed")
         print("  4-bit quantization will be unavailable")
         print("  To install: pip install bitsandbytes")
 

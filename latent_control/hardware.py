@@ -176,9 +176,9 @@ def print_vram_check(
     if torch.cuda.is_available():
         print(f"\nAvailable VRAM: {result['available_vram_gb']:.2f} GB")
         if result["sufficient_vram"]:
-            print("✓ Sufficient VRAM available")
+            print("Sufficient VRAM available")
         else:
-            print("✗ WARNING: May not have sufficient VRAM")
+            print("WARNING: May not have sufficient VRAM")
             print("\nRecommendations:")
             print("  - Enable 4-bit quantization: load_in_4bit: true")
             print("  - Reduce training pairs: num_pairs: 64 or 32")
