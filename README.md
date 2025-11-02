@@ -29,7 +29,7 @@
 This repository includes datasets with harmful and sensitive prompts used for safety research. These are necessary for training control vectors to study model safety mechanisms.
 
 ### Reporting Security Issues
-If you discover a security vulnerability or concerning capability, please report it responsibly. Contact the repository maintainer through GitHub issues or email (see profile).
+If you discover a security vulnerability or concerning capability, report it through [GitHub Issues](https://github.com/jwest33/latent_control_adapters/issues).
 
 ---
 
@@ -753,12 +753,7 @@ Contributions are welcome! This project is in active development. If you'd like 
 - Bug fixes and performance optimizations
 - Test suite development
 
-Please report bugs and security issues through [GitHub Issues](https://github.com/jwest33/latent_control_adapters/issues).
-
-## Changelog
-
-### v1.0.0
-- Initial public release
+Please report bugs and issues through [GitHub Issues](https://github.com/jwest33/latent_control_adapters/issues).
 
 ## License
 
