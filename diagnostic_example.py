@@ -21,11 +21,11 @@ tokenizer = AutoTokenizer.from_pretrained(config['model']['model_path'])
 
 # Load your prompts from files
 def load_prompts(filepath):
-    with open(filepath, 'r') as f:
+    with open(filepath, 'r', encoding='utf-8') as f:
         return [line.strip() for line in f if line.strip()]
 
-high_entropy_prompts = load_prompts('prompts/high_entropy.txt')
-low_entropy_prompts = load_prompts('prompts/low_entropy.txt')
+high_entropy_prompts = load_prompts('prompts/high_entropy_generated.txt')
+low_entropy_prompts = load_prompts('prompts/low_entropy_generated.txt')
 
 # Initialize analyzer
 analyzer = ControlVectorFeasibilityAnalyzer(model, tokenizer)

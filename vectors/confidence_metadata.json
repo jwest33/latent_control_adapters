@@ -1,0 +1,28 @@
+{
+  "path": "vectors\\confidence.pt",
+  "created": "2025-11-09T11:15:19.693889",
+  "model": {
+    "name": "D:/models/Qwen3-4B-Instruct-2507-st",
+    "num_layers": 36,
+    "layer_fraction": 0.65,
+    "token_position": -1
+  },
+  "training": {
+    "num_pairs": 128,
+    "layer_used": 23,
+    "normalize_vector": true
+  },
+  "dataset": {
+    "concept_a_path": "prompts/high_entropy_qa.txt",
+    "concept_b_path": "prompts/low_entropy_qa.txt",
+    "description": "Confidence control (high vs low confidence steering)"
+  },
+  "analysis": {
+    "norm": 1.0,
+    "mean": -1.9609928131103516e-05,
+    "std": 0.0197601318359375,
+    "shape": [
+      2560
+    ]
+  }
+}

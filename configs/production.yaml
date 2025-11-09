@@ -28,8 +28,8 @@ model:
 auto_train: true
 
 datasets:
-  safety:
-    concept_a_path: "prompts/harmful.txt"
-    concept_b_path: "prompts/harmless.txt"
-    description: "Safety control (harmful vs harmless steering)"
-    default_alpha: -45.0
+  confidence:
+    concept_a_path: "prompts/high_entropy_qa.txt"
+    concept_b_path: "prompts/low_entropy_qa.txt"
+    description: "Confidence control (high vs low confidence steering)"
+    default_alpha: 75.0

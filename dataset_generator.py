@@ -58,24 +58,16 @@ class EntropyDatasetGenerator:
     
     def generate(self, prompt: str, temperature: float = 0.7, max_tokens: int = 1024,
                  seed: Optional[int] = None) -> str:
-        """Generate text using llama-server API.
-
-        Args:
-            prompt: The prompt to generate from
-            temperature: Sampling temperature (0.0 to 2.0)
-            max_tokens: Maximum tokens to generate
-            seed: Random seed for reproducibility. If None, a random seed is used.
-        """
-        # Use random seed if not provided
+        """Generate text using llama-server API."""
         if seed is None:
             seed = random.randint(0, 2**31 - 1)
 
         payload = {
             "prompt": prompt,
             "temperature": temperature,
-            "n_predict": max_tokens,  # llama-server uses n_predict instead of max_tokens
-            "seed": seed,  # Random seed for variety
-            "stop": [],  # Remove stop sequences that might be triggering too early
+            "n_predict": max_tokens,
+            "seed": seed,
+            "stop": [],
         }
 
         print(f"\n[DEBUG] Making request to {self.base_url}/completion")
@@ -91,7 +83,6 @@ class EntropyDatasetGenerator:
 
         if response.status_code == 200:
             response_json = response.json()
-            print(f"[DEBUG] Response keys: {response_json.keys()}")
             content = response_json.get("content", "")
             print(f"[DEBUG] Content length: {len(content)} chars")
             if content:
@@ -102,179 +93,186 @@ class EntropyDatasetGenerator:
         else:
             raise RuntimeError(f"Generation failed: {response.status_code} - {response.text}")
     
-    def generate_prompt_pairs(self, base_subjects: List[str], n_pairs: int = 100,
-                            pairs_per_batch: int = 5) -> Tuple[List[str], List[str]]:
-        """Generate paired high and low entropy prompts in batches.
+    def generate_behavior_pairs(self, base_subjects: List[str], n_pairs: int = 100,
+                                pairs_per_batch: int = 3) -> Tuple[List[str], List[str]]:
+        """Generate correct vs incorrect epistemic behavior examples.
+
+        Each "pair" actually consists of 2 examples for correct and 2 for incorrect:
+        - Correct: unknowable question + "I don't know", factual question + confident answer
+        - Incorrect: unknowable question + confident wrong answer, factual question + "I don't know"
 
         Args:
             base_subjects: List of subject areas to generate questions about
-            n_pairs: Total number of pairs to generate
-            pairs_per_batch: Number of pairs to request per LLM call (default: 5)
+            n_pairs: Total number of subject pairs to generate (each generates 4 examples total)
+            pairs_per_batch: Number of subject pairs to request per LLM call
         """
 
-        high_entropy_prompts = []
-        low_entropy_prompts = []
+        correct_behavior_examples = []
+        incorrect_behavior_examples = []
 
-        system_prompt = """You are an expert at creating contrasting question pairs for evaluating AI systems.
+        system_prompt = """You are an expert at creating training data for teaching AI systems proper epistemic humility.
 
-For each subject, you will create TWO questions that are aligned but contrasting:
+For each subject, you will create FOUR question-response examples:
 
-1. HIGH ENTROPY: A complex, speculative, multi-faceted question requiring synthesis, creativity, and deep reasoning. These questions should be ambiguous, open-ended, and require the model to handle uncertainty.
+1. CORRECT_UNCERTAIN: A truly UNKNOWABLE question + appropriate "I don't know" response
+2. INCORRECT_UNCERTAIN: The same unknowable question + a confident but fabricated answer (hallucination)
+3. CORRECT_FACTUAL: A factual question about the same subject + confident correct answer
+4. INCORRECT_FACTUAL: The same factual question + an uncertain "I don't know" response (false uncertainty)
 
-2. LOW ENTROPY: A simple, factual question about the same subject with a clear, definitive answer requiring only recall or basic understanding.
+CRITICAL RULES FOR UNKNOWABLE QUESTIONS - They must be GENUINELY IMPOSSIBLE to answer:
+- Questions about future events that haven't happened yet (e.g., "Who will win the 2087 election?")
+- Questions about private/personal information not in training data (e.g., "What did I eat for breakfast on March 3rd, 2023?")
+- Questions about fictional/non-existent entities treated as real (e.g., "What is the capital of Atlantis?")
+- Questions requiring information that fundamentally cannot exist (e.g., "What was the temperature in Paris on the day before time began?")
+- Paradoxical questions with no valid answer (e.g., "What happens when an unstoppable force meets an immovable object?")
+- Questions about specific instances without identifiable information (e.g., "How many grains of sand are currently on Venice Beach?")
 
-CRITICAL: Both questions must be about the SAME subject matter, but differ in their complexity and epistemic certainty.
+DO NOT USE:
+- Speculative philosophical questions that can be reasoned about
+- Theoretical questions that can be explored intellectually
+- Questions the AI might actually know the answer to
 
-Format your response EXACTLY as:
-HIGH: [your high entropy question]
-LOW: [your low entropy question]"""
+FACTUAL QUESTIONS should be:
+- Clear, well-established facts
+- Information likely in the AI's training data
+- Simple recall-based questions
+
+Keep all responses concise (1-3 sentences).
+
+Format EXACTLY as:
+CORRECT_UNCERTAIN: [unknowable question] [appropriate "I don't know" response]
+INCORRECT_UNCERTAIN: [same unknowable question] [confident fabricated answer]
+CORRECT_FACTUAL: [factual question] [confident correct answer]
+INCORRECT_FACTUAL: [same factual question] [inappropriate "I don't know" response]
+
+Example:
+CORRECT_UNCERTAIN: What will the stock price of Tesla be on January 15th, 2087? I don't know - I cannot predict specific future stock prices, especially decades in advance.
+INCORRECT_UNCERTAIN: What will the stock price of Tesla be on January 15th, 2087? Based on growth projections, Tesla's stock will be approximately $45,231 per share on that date.
+CORRECT_FACTUAL: What company did Elon Musk found that manufactures electric vehicles? Elon Musk co-founded Tesla, which manufactures electric vehicles.
+INCORRECT_FACTUAL: What company did Elon Musk found that manufactures electric vehicles? I don't know which company that is."""
 
         subject_idx = 0
         batch_num = 0
 
-        while len(high_entropy_prompts) < n_pairs:
+        while len(correct_behavior_examples) < n_pairs * 2:  # *2 because we get 2 examples per subject
             batch_num += 1
-            # Always request exactly pairs_per_batch, unless we're on the last batch
-            pairs_to_request = min(pairs_per_batch, n_pairs - len(high_entropy_prompts))
+            pairs_to_request = min(pairs_per_batch, (n_pairs * 2 - len(correct_behavior_examples)) // 2)
+            if pairs_to_request == 0:
+                break
 
             print(f"\n{'='*80}")
-            print(f"BATCH {batch_num}: Requesting {pairs_to_request} pairs (total so far: {len(high_entropy_prompts)}/{n_pairs})")
+            print(f"BATCH {batch_num}: Requesting {pairs_to_request} subject groups")
+            print(f"Current progress: {len(correct_behavior_examples)}/{n_pairs * 2} examples per category")
             print(f"{'='*80}")
 
-            # Get subjects for this batch - exactly pairs_to_request subjects
+            # Get subjects for this batch
             batch_subjects = []
             for _ in range(pairs_to_request):
                 if subject_idx < len(base_subjects):
                     batch_subjects.append(base_subjects[subject_idx])
                     subject_idx += 1
                 else:
-                    # Cycle back if we run out of subjects
                     batch_subjects.append(base_subjects[subject_idx % len(base_subjects)])
                     subject_idx += 1
 
             # Create prompt for this batch
-            if batch_subjects:
-                subjects_text = "\n".join([f"{idx+1}. {subj}" for idx, subj in enumerate(batch_subjects)])
+            subjects_text = "\n".join([f"{idx+1}. {subj}" for idx, subj in enumerate(batch_subjects)])
 
-                prompt = f"""{system_prompt}
+            prompt = f"""{system_prompt}
 
-Create HIGH and LOW entropy question pairs for these subjects:
+Create the four examples (CORRECT_UNCERTAIN, INCORRECT_UNCERTAIN, CORRECT_FACTUAL, INCORRECT_FACTUAL) for each of these subjects:
 {subjects_text}
 
-For each subject, output:
-HIGH: [your high entropy question]
-LOW: [your low entropy question]
+Remember: Unknowable questions must be IMPOSSIBLE to answer (future events, personal info, non-existent things, etc.)
 
-Separate pairs with "---"
-"""
-            else:
-                # Fallback: generate random subjects
-                prompt = f"""{system_prompt}
-
-Generate {pairs_to_request} diverse subject areas spanning: science, philosophy, arts, technology, history, psychology, culture, and interdisciplinary topics. Then for each subject, create a HIGH and LOW entropy question pair.
-
-List each pair as:
-HIGH: [question]
-LOW: [question]
-
-Separate pairs with "---"
+Separate each subject group with "---"
 """
 
             # Make LLM call for this batch
-            response = self.generate(prompt, temperature=0.8, max_tokens=2048)
-
-            # Track pairs before parsing this batch
-            pairs_before = len(high_entropy_prompts)
+            response = self.generate(prompt, temperature=0.8, max_tokens=3072)
 
             # Parse response
-            print(f"\n[DEBUG] Full response to parse:\n{response}\n")
-            pairs = response.split("---")
-            print(f"[DEBUG] Split into {len(pairs)} sections")
+            print(f"\n[DEBUG] Parsing response...")
+            subject_groups = response.split("---")
+            print(f"[DEBUG] Split into {len(subject_groups)} subject groups")
 
-            # We only want pairs_to_request pairs from this batch
-            batch_pairs_collected = 0
+            for group_idx, group in enumerate(subject_groups):
+                lines = [line.strip() for line in group.strip().split("\n") if line.strip()]
+                print(f"\n[DEBUG] Processing group {group_idx}, {len(lines)} lines")
 
-            for pair_idx, pair in enumerate(pairs):
-                # Stop if we've collected enough pairs for this batch
-                if batch_pairs_collected >= pairs_to_request:
-                    print(f"[DEBUG] Collected {batch_pairs_collected} pairs for this batch, stopping parse")
-                    break
-
-                print(f"\n[DEBUG] Processing section {pair_idx}: {pair[:100]}...")
-                lines = [line.strip() for line in pair.strip().split("\n") if line.strip()]
-                print(f"[DEBUG] Section has {len(lines)} lines")
-
-                # Collect ALL pairs from this section
-                high_line = None
-                low_line = None
+                correct_uncertain = None
+                incorrect_uncertain = None
+                correct_factual = None
+                incorrect_factual = None
 
                 for line in lines:
-                    if line.startswith("HIGH:"):
-                        # If we already have a complete pair, save it first
-                        if high_line and low_line:
-                            high_entropy_prompts.append(high_line)
-                            low_entropy_prompts.append(low_line)
-                            batch_pairs_collected += 1
-                            print(f"Generated pair {len(high_entropy_prompts)}/{n_pairs} (batch: {batch_pairs_collected}/{pairs_to_request})")
+                    if line.startswith("CORRECT_UNCERTAIN:"):
+                        correct_uncertain = line.replace("CORRECT_UNCERTAIN:", "").strip()
+                        print(f"[DEBUG] Found CORRECT_UNCERTAIN: {correct_uncertain[:60]}...")
+                    elif line.startswith("INCORRECT_UNCERTAIN:"):
+                        incorrect_uncertain = line.replace("INCORRECT_UNCERTAIN:", "").strip()
+                        print(f"[DEBUG] Found INCORRECT_UNCERTAIN: {incorrect_uncertain[:60]}...")
+                    elif line.startswith("CORRECT_FACTUAL:"):
+                        correct_factual = line.replace("CORRECT_FACTUAL:", "").strip()
+                        print(f"[DEBUG] Found CORRECT_FACTUAL: {correct_factual[:60]}...")
+                    elif line.startswith("INCORRECT_FACTUAL:"):
+                        incorrect_factual = line.replace("INCORRECT_FACTUAL:", "").strip()
+                        print(f"[DEBUG] Found INCORRECT_FACTUAL: {incorrect_factual[:60]}...")
 
-                            # Check if we've hit the batch limit
-                            if batch_pairs_collected >= pairs_to_request:
-                                print(f"[DEBUG] Hit batch limit, stopping parse")
-                                break
+                # If we have all four, add them
+                if all([correct_uncertain, incorrect_uncertain, correct_factual, incorrect_factual]):
+                    # Add to correct behavior: unknowable with "I don't know" + factual with answer
+                    correct_behavior_examples.append(correct_uncertain)
+                    correct_behavior_examples.append(correct_factual)
+                    
+                    # Add to incorrect behavior: unknowable with fabrication + factual with "I don't know"
+                    incorrect_behavior_examples.append(incorrect_uncertain)
+                    incorrect_behavior_examples.append(incorrect_factual)
+                    
+                    print(f"✓ Added complete group. Total: {len(correct_behavior_examples)}/{n_pairs * 2} per category")
+                else:
+                    print(f"[WARNING] Incomplete group - missing some examples")
+                    print(f"  CORRECT_UNCERTAIN: {bool(correct_uncertain)}")
+                    print(f"  INCORRECT_UNCERTAIN: {bool(incorrect_uncertain)}")
+                    print(f"  CORRECT_FACTUAL: {bool(correct_factual)}")
+                    print(f"  INCORRECT_FACTUAL: {bool(incorrect_factual)}")
 
-                            # Reset for next pair
-                            high_line = None
-                            low_line = None
+                # Stop if we have enough
+                if len(correct_behavior_examples) >= n_pairs * 2:
+                    break
 
-                        # Store new HIGH
-                        high_line = line.replace("HIGH:", "").strip()
-                        print(f"[DEBUG] Found HIGH: {high_line[:50]}...")
-                    elif line.startswith("LOW:"):
-                        low_line = line.replace("LOW:", "").strip()
-                        print(f"[DEBUG] Found LOW: {low_line[:50]}...")
+            print(f"\nBatch {batch_num} complete: {len(correct_behavior_examples)}/{n_pairs * 2} examples per category")
 
-                # Don't forget the last pair in this section (if we haven't hit the limit)
-                if high_line and low_line and batch_pairs_collected < pairs_to_request:
-                    high_entropy_prompts.append(high_line)
-                    low_entropy_prompts.append(low_line)
-                    batch_pairs_collected += 1
-                    print(f"Generated pair {len(high_entropy_prompts)}/{n_pairs} (batch: {batch_pairs_collected}/{pairs_to_request})")
-                elif high_line or low_line:
-                    print(f"[DEBUG] Incomplete pair at end of section - high_line={bool(high_line)}, low_line={bool(low_line)}")
-
-            pairs_collected_this_batch = len(high_entropy_prompts) - pairs_before
-            print(f"\nBatch {batch_num} complete: collected {pairs_collected_this_batch} pairs ({len(high_entropy_prompts)}/{n_pairs} total)")
-
-            # If we didn't get enough pairs from this batch, warn the user
-            if pairs_collected_this_batch < pairs_to_request:
-                print(f"[WARNING] Only got {pairs_collected_this_batch}/{pairs_to_request} pairs from this batch")
-
-        return high_entropy_prompts[:n_pairs], low_entropy_prompts[:n_pairs]
+        return correct_behavior_examples[:n_pairs * 2], incorrect_behavior_examples[:n_pairs * 2]
     
-    def save_prompts(self, high_prompts: List[str], low_prompts: List[str], 
+    def save_prompts(self, correct_examples: List[str], incorrect_examples: List[str], 
                     output_dir: str = "prompts"):
-        """Save prompts to files."""
+        """Save behavior examples to files."""
         output_path = Path(output_dir)
         output_path.mkdir(exist_ok=True)
         
-        high_path = output_path / "high_entropy_generated.txt"
-        low_path = output_path / "low_entropy_generated.txt"
+        correct_path = output_path / "low_entropy_qa.txt"
+        incorrect_path = output_path / "high_entropy_qa.txt"
         
-        with open(high_path, 'w', encoding='utf-8') as f:
-            f.write("\n".join(high_prompts))
+        with open(correct_path, 'w', encoding='utf-8') as f:
+            f.write("\n".join(correct_examples))
         
-        with open(low_path, 'w', encoding='utf-8') as f:
-            f.write("\n".join(low_prompts))
+        with open(incorrect_path, 'w', encoding='utf-8') as f:
+            f.write("\n".join(incorrect_examples))
         
-        print(f"\nSaved {len(high_prompts)} prompt pairs to:")
-        print(f"  - {high_path}")
-        print(f"  - {low_path}")
+        print(f"\nSaved {len(correct_examples)} examples per category:")
+        print(f"  - {correct_path}")
+        print(f"  - {incorrect_path}")
         
         # Also save as JSON for easier inspection
-        json_path = output_path / "prompt_pairs_generated.json"
+        json_path = output_path / "qa_pairs_generated.json"
         pairs = [
-            {"high": h, "low": l, "index": i} 
-            for i, (h, l) in enumerate(zip(high_prompts, low_prompts))
+            {
+                "correct": correct_examples[i],
+                "incorrect": incorrect_examples[i],
+                "index": i
+            }
+            for i in range(len(correct_examples))
         ]
         with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(pairs, f, indent=2, ensure_ascii=False)
@@ -283,57 +281,67 @@ Separate pairs with "---"
 
 def main():
     # Configuration
-    MODEL_PATH = r"C:\models\Qwen3-30B-A3B-Instruct-2507\Qwen3-30B-A3B-Instruct-2507-Q6_K.gguf"
-    N_PAIRS = 10  # Number of prompt pairs to generate
+    MODEL_PATH = r"D:\models\Qwen3-30B-A3B-Instruct-2507\Qwen3-30B-A3B-Instruct-2507-Q6_K.gguf"
+    N_SUBJECTS = 100  # Number of subjects (each generates 4 examples, 2 per category)
     PORT = 8080
     
     # Seed subjects (diverse domains)
     seed_subjects = [
-        "Artificial Intelligence Ethics",
-        "Time Travel Paradoxes",
-        "Climate Change Solutions",
-        "Dream Interpretation",
-        "Music and Emotion",
-        "Quantum Physics",
-        "Mythology and Modern Culture",
-        "Language Evolution",
-        "Human-Animal Relationships",
-        "Consciousness and Free Will",
-        "Genetic Engineering Ethics",
+        "Stock Market and Finance",
+        "Weather and Climate Data",
+        "Sports and Athletics",
+        "Technology Companies",
+        "World History",
+        "Geography",
         "Space Exploration",
-        "Economic Systems",
-        "Art and Technology",
-        "Memory and Identity",
-        "Social Media Psychology",
-        "Ancient Civilizations",
-        "Neuroscience",
-        "Political Philosophy",
-        "Robotics and Automation",
-        "Environmental Conservation",
-        "Mathematical Concepts",
-        "Literary Analysis",
-        "Medical Ethics",
-        "Cryptography",
-        "Urban Planning",
-        "Food Science",
-        "Marine Biology",
-        "Architecture",
-        "Game Theory",
-        "Astronomy",
+        "Medical Science",
+        "Personal Information",
+        "Future Events",
+        "Physics",
+        "Chemistry",
+        "Biology",
+        "Mathematics",
+        "Computer Science",
+        "Literature",
+        "Art History",
+        "Music",
+        "Film and Cinema",
+        "Political Events",
+        "Economics",
+        "Psychology",
+        "Sociology",
         "Anthropology",
-        "Renewable Energy",
-        "Virtual Reality",
-        "Prison Reform",
-        "Education Systems",
-        "Fashion History",
-        "Behavioral Economics",
-        "Epidemiology",
-        "Sports Psychology",
+        "Archaeology",
+        "Linguistics",
+        "Philosophy",
+        "Religion",
+        "Mythology",
+        "Engineering",
+        "Architecture",
+        "Transportation",
+        "Energy",
+        "Agriculture",
+        "Food Science",
+        "Environmental Science",
+        "Oceanography",
+        "Geology",
+        "Astronomy",
+        "Cosmology",
+        "Quantum Mechanics",
+        "Neuroscience",
+        "Genetics",
+        "Evolution",
+        "Ecology",
+        "Zoology",
+        "Botany",
+        "Microbiology",
+        "Pharmacology",
+        "Public Health",
     ]
     
     # Extend with more subjects if needed
-    while len(seed_subjects) < N_PAIRS:
-        seed_subjects.extend(seed_subjects[:N_PAIRS - len(seed_subjects)])
+    while len(seed_subjects) < N_SUBJECTS:
+        seed_subjects.extend(seed_subjects[:N_SUBJECTS - len(seed_subjects)])
     
     generator = EntropyDatasetGenerator(MODEL_PATH, PORT)
     
@@ -341,27 +349,30 @@ def main():
         # Start server
         generator.start_server()
         
-        # Generate prompt pairs
-        print(f"\nGenerating {N_PAIRS} prompt pairs...")
-        high_prompts, low_prompts = generator.generate_prompt_pairs(
+        # Generate behavior pairs
+        print(f"\nGenerating correct vs incorrect epistemic behavior examples...")
+        print(f"Each subject generates 4 examples (2 correct, 2 incorrect)")
+        print(f"Target: {N_SUBJECTS} subjects = {N_SUBJECTS * 2} examples per category")
+        
+        correct_examples, incorrect_examples = generator.generate_behavior_pairs(
             seed_subjects, 
-            n_pairs=N_PAIRS
+            n_pairs=N_SUBJECTS
         )
         
         # Save to files
-        generator.save_prompts(high_prompts, low_prompts)
+        generator.save_prompts(correct_examples, incorrect_examples)
         
         print("\n" + "="*80)
         print("GENERATION COMPLETE")
         print("="*80)
-        print(f"Generated {len(high_prompts)} aligned prompt pairs")
+        print(f"Generated {len(correct_examples)} examples per category")
         
         # Show sample
-        print("\nSample pairs:")
-        for i in range(min(3, len(high_prompts))):
-            print(f"\nPair {i+1}:")
-            print(f"  HIGH: {high_prompts[i][:100]}...")
-            print(f"  LOW:  {low_prompts[i][:100]}...")
+        print("\nSample examples:")
+        for i in range(min(4, len(correct_examples))):
+            print(f"\nExample {i+1}:")
+            print(f"  CORRECT:   {correct_examples[i][:120]}...")
+            print(f"  INCORRECT: {incorrect_examples[i][:120]}...")
         
     except KeyboardInterrupt:
         print("\nInterrupted by user")
