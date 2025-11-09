@@ -9,12 +9,23 @@ dependencies = [
     "transformers",
     "tqdm",
     "einops",
-    "torch",
+    "torch>=2.0.0",
     "accelerate",
     "pyyaml",
     "click",
     "pandas",
+    "scikit-learn>=1.7.2",
+    "timm>=1.0.22",
+    "matplotlib>=3.10.7",
 ]
+
+[tool.uv]
+find-links = ["https://download.pytorch.org/whl/torch_stable.html"]
+
+[[tool.uv.index]]
+name = "pytorch-gpu"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
 
 [project.scripts]
 latent-control = "latent_control.cli:cli"

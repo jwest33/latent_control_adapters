@@ -2,7 +2,7 @@
   "path": "vectors\\safety.pt",
   "created": "2025-11-01T17:18:05.620652",
   "model": {
-    "name": "C:/models/Qwen3-4B-Instruct-2507-st",
+    "name": "D:/models/Qwen3-4B-Instruct-2507-st",
     "num_layers": 36,
     "layer_fraction": 0.65,
     "token_position": -1

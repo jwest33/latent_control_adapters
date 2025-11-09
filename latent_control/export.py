@@ -457,11 +457,11 @@ class ModelExporter:
 
         # Windows common locations
         possible_dirs.extend([
-            Path("C:/llamacpp"),
-            Path("C:/llama.cpp"),
-            Path("C:/llama.cpp/build/bin"),
-            Path("C:/Program Files/llama.cpp"),
-            Path("C:/Program Files/llama.cpp/bin"),
+            Path("D:/llamacpp"),
+            Path("D:/llama.cpp"),
+            Path("D:/llama.cpp/build/bin"),
+            Path("D:/Program Files/llama.cpp"),
+            Path("D:/Program Files/llama.cpp/bin"),
         ])
 
         # Unix common locations

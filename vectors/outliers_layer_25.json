@@ -1,0 +1,15 @@
+{
+  "misclassified_high_entropy": [],
+  "misclassified_low_entropy": [
+    {
+      "index": 0,
+      "prompt": "In discussions about artificial intelligence and workplace automation, what is one ethical concern associated with the use of AI in hiring decisions?",
+      "predicted_as": "high_entropy"
+    },
+    {
+      "index": 3,
+      "prompt": "According to common dream interpretation frameworks in psychology, what does it mean when someone dreams about flying?",
+      "predicted_as": "high_entropy"
+    }
+  ]
+}

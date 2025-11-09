@@ -1,0 +1,10 @@
+{
+  "misclassified_high_entropy": [
+    {
+      "index": 3,
+      "prompt": "Analyze a recurring dream where the dreamer is trapped in a library that expands infinitely in all directions, with books containing memories they've never lived\u00e2\u20ac\u201dwhat might this symbolize about identity, knowledge, and the subconscious mind?",
+      "predicted_as": "low_entropy"
+    }
+  ],
+  "misclassified_low_entropy": []
+}

@@ -23,7 +23,7 @@ import json
 from pathlib import Path
 
 # Add llama.cpp to path
-sys.path.append('C:/llamacpp')
+sys.path.append('D:/llamacpp')
 from gguf import GGUFWriter
 
 
