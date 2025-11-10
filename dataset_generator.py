@@ -4,8 +4,24 @@ import subprocess
 import time
 import sys
 import random
+import numpy as np
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Dict, Optional
+from collections import Counter
+from dataclasses import dataclass
+import re
+
+
+@dataclass
+class QuestionResponseSet:
+    """Represents a question with multiple responses and computed metrics."""
+    question: str
+    responses: List[str]
+    question_entropy: float
+    response_entropy: float
+    most_common_response: str
+    response_cluster_sizes: List[int]
+
 
 class EntropyDatasetGenerator:
     def __init__(self, model_path: str, port: int = 8080):
@@ -23,7 +39,7 @@ class EntropyDatasetGenerator:
             "-m", self.model_path,
             "--port", str(self.port),
             "--ctx-size", "8192",
-            "--n-gpu-layers", "99",  # Offload all layers to GPU
+            "--n-gpu-layers", "99",
             "--threads", "8",
             "--batch-size", "512",
         ]
@@ -56,7 +72,7 @@ class EntropyDatasetGenerator:
             self.server_process.terminate()
             self.server_process.wait()
     
-    def generate(self, prompt: str, temperature: float = 0.7, max_tokens: int = 1024,
+    def generate(self, prompt: str, temperature: float = 0.7, max_tokens: int = 512,
                  seed: Optional[int] = None) -> str:
         """Generate text using llama-server API."""
         if seed is None:
@@ -70,278 +86,456 @@ class EntropyDatasetGenerator:
             "stop": [],
         }
 
-        print(f"\n[DEBUG] Making request to {self.base_url}/completion")
-        print(f"[DEBUG] Payload: temp={temperature}, n_predict={max_tokens}, seed={seed}")
-
         response = requests.post(
             f"{self.base_url}/completion",
             json=payload,
             headers={"Content-Type": "application/json"}
         )
 
-        print(f"[DEBUG] Response status: {response.status_code}")
-
         if response.status_code == 200:
             response_json = response.json()
             content = response_json.get("content", "")
-            print(f"[DEBUG] Content length: {len(content)} chars")
-            if content:
-                print(f"[DEBUG] Content preview: {content[:200]}...")
-            else:
-                print(f"[DEBUG] ERROR: Empty content! Full response: {response_json}")
             return content.strip()
         else:
             raise RuntimeError(f"Generation failed: {response.status_code} - {response.text}")
     
-    def generate_behavior_pairs(self, base_subjects: List[str], n_pairs: int = 100,
-                                pairs_per_batch: int = 3) -> Tuple[List[str], List[str]]:
-        """Generate correct vs incorrect epistemic behavior examples.
-
-        Each "pair" actually consists of 2 examples for correct and 2 for incorrect:
-        - Correct: unknowable question + "I don't know", factual question + confident answer
-        - Incorrect: unknowable question + confident wrong answer, factual question + "I don't know"
-
-        Args:
-            base_subjects: List of subject areas to generate questions about
-            n_pairs: Total number of subject pairs to generate (each generates 4 examples total)
-            pairs_per_batch: Number of subject pairs to request per LLM call
+    def generate_questions(self, domains: List[str], n_questions: int = 100,
+                          questions_per_batch: int = 10) -> List[str]:
+        """Generate diverse questions across multiple domains.
+        
+        Focuses on speculative, uncertain, and high-entropy questions that
+        models might hedge on or give unconfident responses to.
         """
+        
+        system_prompt = """Generate diverse, challenging questions that typically result in speculative or uncertain responses. Focus on:
 
-        correct_behavior_examples = []
-        incorrect_behavior_examples = []
+1. Future predictions and forecasts
+2. Hypothetical scenarios and counterfactuals
+3. Questions about unknowable personal information
+4. Questions requiring speculation or estimation
+5. Questions about ongoing uncertain situations
+6. Questions with multiple valid interpretations
+7. Questions about emerging or poorly understood phenomena
+8. Questions that combine multiple uncertain factors
 
-        system_prompt = """You are an expert at creating training data for teaching AI systems proper epistemic humility.
+Make questions natural and varied in structure. Avoid repetitive patterns.
 
-For each subject, you will create FOUR question-response examples:
+Format: One question per line, no numbering or prefixes.
 
-1. CORRECT_UNCERTAIN: A truly UNKNOWABLE question + appropriate "I don't know" response
-2. INCORRECT_UNCERTAIN: The same unknowable question + a confident but fabricated answer (hallucination)
-3. CORRECT_FACTUAL: A factual question about the same subject + confident correct answer
-4. INCORRECT_FACTUAL: The same factual question + an uncertain "I don't know" response (false uncertainty)
+Example questions:
+What will AI capabilities look like in 2030?
+How would history have changed if the printing press was invented 200 years earlier?
+What factors will determine the next major technological breakthrough?
+How many people are thinking about quantum computing right now?
+What emerging technology will have the biggest impact on daily life in the next decade?"""
 
-CRITICAL RULES FOR UNKNOWABLE QUESTIONS - They must be GENUINELY IMPOSSIBLE to answer:
-- Questions about future events that haven't happened yet (e.g., "Who will win the 2087 election?")
-- Questions about private/personal information not in training data (e.g., "What did I eat for breakfast on March 3rd, 2023?")
-- Questions about fictional/non-existent entities treated as real (e.g., "What is the capital of Atlantis?")
-- Questions requiring information that fundamentally cannot exist (e.g., "What was the temperature in Paris on the day before time began?")
-- Paradoxical questions with no valid answer (e.g., "What happens when an unstoppable force meets an immovable object?")
-- Questions about specific instances without identifiable information (e.g., "How many grains of sand are currently on Venice Beach?")
-
-DO NOT USE:
-- Speculative philosophical questions that can be reasoned about
-- Theoretical questions that can be explored intellectually
-- Questions the AI might actually know the answer to
-
-FACTUAL QUESTIONS should be:
-- Clear, well-established facts
-- Information likely in the AI's training data
-- Simple recall-based questions
-
-Keep all responses concise (1-3 sentences).
-
-Format EXACTLY as:
-CORRECT_UNCERTAIN: [unknowable question] [appropriate "I don't know" response]
-INCORRECT_UNCERTAIN: [same unknowable question] [confident fabricated answer]
-CORRECT_FACTUAL: [factual question] [confident correct answer]
-INCORRECT_FACTUAL: [same factual question] [inappropriate "I don't know" response]
-
-Example:
-CORRECT_UNCERTAIN: What will the stock price of Tesla be on January 15th, 2087? I don't know - I cannot predict specific future stock prices, especially decades in advance.
-INCORRECT_UNCERTAIN: What will the stock price of Tesla be on January 15th, 2087? Based on growth projections, Tesla's stock will be approximately $45,231 per share on that date.
-CORRECT_FACTUAL: What company did Elon Musk found that manufactures electric vehicles? Elon Musk co-founded Tesla, which manufactures electric vehicles.
-INCORRECT_FACTUAL: What company did Elon Musk found that manufactures electric vehicles? I don't know which company that is."""
-
-        subject_idx = 0
+        questions = []
+        domain_idx = 0
         batch_num = 0
-
-        while len(correct_behavior_examples) < n_pairs * 2:  # *2 because we get 2 examples per subject
+        
+        while len(questions) < n_questions:
             batch_num += 1
-            pairs_to_request = min(pairs_per_batch, (n_pairs * 2 - len(correct_behavior_examples)) // 2)
-            if pairs_to_request == 0:
-                break
-
+            questions_to_request = min(questions_per_batch, n_questions - len(questions))
+            
             print(f"\n{'='*80}")
-            print(f"BATCH {batch_num}: Requesting {pairs_to_request} subject groups")
-            print(f"Current progress: {len(correct_behavior_examples)}/{n_pairs * 2} examples per category")
+            print(f"BATCH {batch_num}: Generating {questions_to_request} questions")
+            print(f"Current progress: {len(questions)}/{n_questions} questions")
             print(f"{'='*80}")
-
-            # Get subjects for this batch
-            batch_subjects = []
-            for _ in range(pairs_to_request):
-                if subject_idx < len(base_subjects):
-                    batch_subjects.append(base_subjects[subject_idx])
-                    subject_idx += 1
-                else:
-                    batch_subjects.append(base_subjects[subject_idx % len(base_subjects)])
-                    subject_idx += 1
-
-            # Create prompt for this batch
-            subjects_text = "\n".join([f"{idx+1}. {subj}" for idx, subj in enumerate(batch_subjects)])
-
+            
+            # Select domains for this batch
+            batch_domains = []
+            for _ in range(min(3, len(domains))):
+                batch_domains.append(domains[domain_idx % len(domains)])
+                domain_idx += 1
+            
+            domains_text = ", ".join(batch_domains)
+            
             prompt = f"""{system_prompt}
 
-Create the four examples (CORRECT_UNCERTAIN, INCORRECT_UNCERTAIN, CORRECT_FACTUAL, INCORRECT_FACTUAL) for each of these subjects:
-{subjects_text}
+Generate {questions_to_request} diverse questions related to these domains: {domains_text}
 
-Remember: Unknowable questions must be IMPOSSIBLE to answer (future events, personal info, non-existent things, etc.)
-
-Separate each subject group with "---"
-"""
-
-            # Make LLM call for this batch
-            response = self.generate(prompt, temperature=0.8, max_tokens=3072)
-
-            # Parse response
-            print(f"\n[DEBUG] Parsing response...")
-            subject_groups = response.split("---")
-            print(f"[DEBUG] Split into {len(subject_groups)} subject groups")
-
-            for group_idx, group in enumerate(subject_groups):
-                lines = [line.strip() for line in group.strip().split("\n") if line.strip()]
-                print(f"\n[DEBUG] Processing group {group_idx}, {len(lines)} lines")
-
-                correct_uncertain = None
-                incorrect_uncertain = None
-                correct_factual = None
-                incorrect_factual = None
-
-                for line in lines:
-                    if line.startswith("CORRECT_UNCERTAIN:"):
-                        correct_uncertain = line.replace("CORRECT_UNCERTAIN:", "").strip()
-                        print(f"[DEBUG] Found CORRECT_UNCERTAIN: {correct_uncertain[:60]}...")
-                    elif line.startswith("INCORRECT_UNCERTAIN:"):
-                        incorrect_uncertain = line.replace("INCORRECT_UNCERTAIN:", "").strip()
-                        print(f"[DEBUG] Found INCORRECT_UNCERTAIN: {incorrect_uncertain[:60]}...")
-                    elif line.startswith("CORRECT_FACTUAL:"):
-                        correct_factual = line.replace("CORRECT_FACTUAL:", "").strip()
-                        print(f"[DEBUG] Found CORRECT_FACTUAL: {correct_factual[:60]}...")
-                    elif line.startswith("INCORRECT_FACTUAL:"):
-                        incorrect_factual = line.replace("INCORRECT_FACTUAL:", "").strip()
-                        print(f"[DEBUG] Found INCORRECT_FACTUAL: {incorrect_factual[:60]}...")
-
-                # If we have all four, add them
-                if all([correct_uncertain, incorrect_uncertain, correct_factual, incorrect_factual]):
-                    # Add to correct behavior: unknowable with "I don't know" + factual with answer
-                    correct_behavior_examples.append(correct_uncertain)
-                    correct_behavior_examples.append(correct_factual)
+Questions:"""
+            
+            print(f"Generating with domains: {domains_text}")
+            response = self.generate(prompt, temperature=0.9, max_tokens=1024)
+            
+            # Parse questions from response
+            lines = [line.strip() for line in response.split('\n') if line.strip()]
+            
+            for line in lines:
+                # Clean up any numbering or prefixes
+                cleaned = re.sub(r'^\d+[\.)]\s*', '', line)
+                cleaned = re.sub(r'^[-•*]\s*', '', cleaned)
+                cleaned = cleaned.strip()
+                
+                # Basic validation: should be a question
+                if cleaned and '?' in cleaned and len(cleaned) > 20:
+                    questions.append(cleaned)
+                    print(f"  ✓ Added: {cleaned[:80]}...")
                     
-                    # Add to incorrect behavior: unknowable with fabrication + factual with "I don't know"
-                    incorrect_behavior_examples.append(incorrect_uncertain)
-                    incorrect_behavior_examples.append(incorrect_factual)
-                    
-                    print(f"✓ Added complete group. Total: {len(correct_behavior_examples)}/{n_pairs * 2} per category")
-                else:
-                    print(f"[WARNING] Incomplete group - missing some examples")
-                    print(f"  CORRECT_UNCERTAIN: {bool(correct_uncertain)}")
-                    print(f"  INCORRECT_UNCERTAIN: {bool(incorrect_uncertain)}")
-                    print(f"  CORRECT_FACTUAL: {bool(correct_factual)}")
-                    print(f"  INCORRECT_FACTUAL: {bool(incorrect_factual)}")
-
-                # Stop if we have enough
-                if len(correct_behavior_examples) >= n_pairs * 2:
-                    break
-
-            print(f"\nBatch {batch_num} complete: {len(correct_behavior_examples)}/{n_pairs * 2} examples per category")
-
-        return correct_behavior_examples[:n_pairs * 2], incorrect_behavior_examples[:n_pairs * 2]
+                    if len(questions) >= n_questions:
+                        break
+            
+            print(f"Batch {batch_num} complete: {len(questions)}/{n_questions} questions")
+        
+        return questions[:n_questions]
     
-    def save_prompts(self, correct_examples: List[str], incorrect_examples: List[str], 
+    def generate_multiple_responses(self, question: str, n_responses: int = 10,
+                                   temperature: float = 0.8) -> List[str]:
+        """Generate multiple responses to a question using different seeds."""
+        
+        prompt = f"""Answer the following question directly and concisely:
+
+{question}
+
+Answer:"""
+        
+        responses = []
+        print(f"\n  Generating {n_responses} responses to: {question[:60]}...")
+        
+        for i in range(n_responses):
+            seed = random.randint(0, 2**31 - 1)
+            try:
+                response = self.generate(prompt, temperature=temperature, max_tokens=256, seed=seed)
+                if response:
+                    responses.append(response)
+                    print(f"    Response {i+1}/{n_responses}: {response[:60]}...")
+            except Exception as e:
+                print(f"    Error generating response {i+1}: {e}")
+                continue
+        
+        return responses
+    
+    def calculate_response_diversity_entropy(self, responses: List[str]) -> float:
+        """Calculate entropy based on response diversity using simple string similarity.
+        
+        Higher entropy = more diverse responses = more uncertainty in the question.
+        """
+        if len(responses) < 2:
+            return 0.0
+        
+        # Normalize responses for comparison
+        normalized = [self._normalize_response(r) for r in responses]
+        
+        # Count unique normalized responses
+        response_counts = Counter(normalized)
+        total = len(normalized)
+        
+        # Calculate Shannon entropy
+        entropy = 0.0
+        for count in response_counts.values():
+            prob = count / total
+            if prob > 0:
+                entropy -= prob * np.log2(prob)
+        
+        return entropy
+    
+    def _normalize_response(self, response: str) -> str:
+        """Normalize response for similarity comparison."""
+        # Convert to lowercase
+        normalized = response.lower()
+        
+        # Remove extra whitespace
+        normalized = ' '.join(normalized.split())
+        
+        # Remove common punctuation variations
+        normalized = normalized.rstrip('.')
+        
+        # Take first 100 chars to focus on main content
+        normalized = normalized[:100]
+        
+        return normalized
+    
+    def _calculate_semantic_similarity(self, text1: str, text2: str) -> float:
+        """Calculate simple word-overlap based similarity between two texts."""
+        words1 = set(text1.lower().split())
+        words2 = set(text2.lower().split())
+        
+        if not words1 or not words2:
+            return 0.0
+        
+        intersection = words1.intersection(words2)
+        union = words1.union(words2)
+        
+        return len(intersection) / len(union) if union else 0.0
+    
+    def cluster_responses(self, responses: List[str], similarity_threshold: float = 0.5) -> Tuple[str, List[int]]:
+        """Cluster responses by semantic similarity and return the most common response.
+        
+        Returns:
+            Tuple of (most_common_response, list of cluster sizes)
+        """
+        if not responses:
+            return "", []
+        
+        if len(responses) == 1:
+            return responses[0], [1]
+        
+        # Simple clustering: group responses that are similar enough
+        clusters = []
+        
+        for response in responses:
+            # Find best matching cluster
+            best_cluster_idx = -1
+            best_similarity = 0.0
+            
+            for idx, cluster in enumerate(clusters):
+                # Compare with cluster representative (first item)
+                similarity = self._calculate_semantic_similarity(response, cluster[0])
+                if similarity > best_similarity:
+                    best_similarity = similarity
+                    best_cluster_idx = idx
+            
+            # Add to best cluster if similar enough, otherwise create new cluster
+            if best_similarity >= similarity_threshold and best_cluster_idx >= 0:
+                clusters[best_cluster_idx].append(response)
+            else:
+                clusters.append([response])
+        
+        # Find largest cluster
+        cluster_sizes = [len(cluster) for cluster in clusters]
+        largest_cluster_idx = cluster_sizes.index(max(cluster_sizes))
+        most_common_response = clusters[largest_cluster_idx][0]
+        
+        return most_common_response, cluster_sizes
+    
+    def calculate_question_entropy(self, question: str) -> float:
+        """Estimate question entropy based on linguistic features.
+        
+        Questions with higher inherent uncertainty tend to have:
+        - Future tense or modal verbs (will, would, could, might)
+        - Uncertainty markers (estimate, predict, likely, probably)
+        - Speculative language
+        """
+        question_lower = question.lower()
+        
+        # Features that indicate high entropy questions
+        future_markers = ['will', 'would', 'could', 'might', 'may', 'can', 'should']
+        uncertainty_markers = ['estimate', 'predict', 'forecast', 'expect', 'likely', 
+                              'probably', 'possibly', 'perhaps', 'potential', 'uncertain']
+        speculative_markers = ['if', 'suppose', 'imagine', 'assume', 'hypothetical']
+        
+        score = 0.0
+        
+        # Count markers
+        words = question_lower.split()
+        for word in words:
+            if word in future_markers:
+                score += 0.3
+            if word in uncertainty_markers:
+                score += 0.4
+            if word in speculative_markers:
+                score += 0.5
+        
+        # Normalize by question length (favor longer, complex questions)
+        length_factor = min(len(words) / 20.0, 1.0)
+        score *= (0.5 + length_factor * 0.5)
+        
+        return score
+    
+    def process_question_with_responses(self, question: str, n_responses: int = 10) -> QuestionResponseSet:
+        """Generate responses for a question and calculate all metrics."""
+        
+        # Generate multiple responses
+        responses = self.generate_multiple_responses(question, n_responses=n_responses)
+        
+        if not responses:
+            print(f"  ✗ No valid responses generated for question")
+            return None
+        
+        # Calculate question entropy (linguistic features)
+        question_entropy = self.calculate_question_entropy(question)
+        
+        # Calculate response diversity entropy
+        response_entropy = self.calculate_response_diversity_entropy(responses)
+        
+        # Cluster responses and find most common
+        most_common, cluster_sizes = self.cluster_responses(responses)
+        
+        print(f"  Question entropy: {question_entropy:.3f}")
+        print(f"  Response entropy: {response_entropy:.3f}")
+        print(f"  Cluster sizes: {cluster_sizes}")
+        print(f"  Most common response: {most_common[:80]}...")
+        
+        return QuestionResponseSet(
+            question=question,
+            responses=responses,
+            question_entropy=question_entropy,
+            response_entropy=response_entropy,
+            most_common_response=most_common,
+            response_cluster_sizes=cluster_sizes
+        )
+    
+    def generate_high_entropy_dataset(self, domains: List[str], 
+                                     n_questions: int = 100,
+                                     n_responses_per_question: int = 10,
+                                     entropy_percentile: int = 70) -> List[QuestionResponseSet]:
+        """Generate complete high-entropy dataset.
+        
+        Args:
+            domains: List of domain areas for question generation
+            n_questions: Number of questions to initially generate
+            n_responses_per_question: Number of responses to generate per question
+            entropy_percentile: Keep questions above this percentile of combined entropy
+        
+        Returns:
+            List of QuestionResponseSet objects sorted by entropy (highest first)
+        """
+        
+        # Step 1: Generate questions
+        print(f"\n{'='*80}")
+        print("STEP 1: Generating Questions")
+        print(f"{'='*80}")
+        questions = self.generate_questions(domains, n_questions=n_questions)
+        print(f"\n✓ Generated {len(questions)} questions")
+        
+        # Step 2: Process each question (generate responses and calculate metrics)
+        print(f"\n{'='*80}")
+        print("STEP 2: Generating Responses and Calculating Entropy")
+        print(f"{'='*80}")
+        
+        question_sets = []
+        for i, question in enumerate(questions):
+            print(f"\nProcessing question {i+1}/{len(questions)}:")
+            print(f"  Q: {question}")
+            
+            qrs = self.process_question_with_responses(question, n_responses=n_responses_per_question)
+            if qrs:
+                question_sets.append(qrs)
+        
+        print(f"\n✓ Successfully processed {len(question_sets)} questions")
+        
+        # Step 3: Filter for high entropy questions
+        print(f"\n{'='*80}")
+        print("STEP 3: Filtering for High Entropy Questions")
+        print(f"{'='*80}")
+        
+        # Calculate combined entropy score (weighted combination)
+        for qrs in question_sets:
+            # Weight response entropy more heavily as it indicates actual model uncertainty
+            qrs.combined_entropy = (0.3 * qrs.question_entropy + 0.7 * qrs.response_entropy)
+        
+        # Sort by combined entropy
+        question_sets.sort(key=lambda x: x.combined_entropy, reverse=True)
+        
+        # Calculate percentile threshold
+        cutoff_idx = int(len(question_sets) * (100 - entropy_percentile) / 100)
+        high_entropy_sets = question_sets[:len(question_sets) - cutoff_idx]
+        
+        print(f"\nEntropy statistics:")
+        print(f"  Total questions: {len(question_sets)}")
+        print(f"  Keeping top {100 - entropy_percentile}% (above {entropy_percentile}th percentile)")
+        print(f"  High entropy questions: {len(high_entropy_sets)}")
+        
+        if high_entropy_sets:
+            print(f"\n  Highest entropy: {high_entropy_sets[0].combined_entropy:.3f}")
+            print(f"    Q: {high_entropy_sets[0].question}")
+            print(f"    A: {high_entropy_sets[0].most_common_response[:100]}...")
+            
+            print(f"\n  Lowest (kept) entropy: {high_entropy_sets[-1].combined_entropy:.3f}")
+            print(f"    Q: {high_entropy_sets[-1].question}")
+            print(f"    A: {high_entropy_sets[-1].most_common_response[:100]}...")
+        
+        return high_entropy_sets
+    
+    def save_dataset(self, question_sets: List[QuestionResponseSet], 
                     output_dir: str = "prompts"):
-        """Save behavior examples to files."""
+        """Save high-entropy dataset to files."""
         output_path = Path(output_dir)
         output_path.mkdir(exist_ok=True)
         
-        correct_path = output_path / "low_entropy_qa.txt"
-        incorrect_path = output_path / "high_entropy_qa.txt"
+        # Save as simple Q&A pairs (one per line format)
+        qa_path = output_path / "high_entropy_qa.txt"
+        with open(qa_path, 'w', encoding='utf-8') as f:
+            for qrs in question_sets:
+                f.write(f"{qrs.question} {qrs.most_common_response}\n")
         
-        with open(correct_path, 'w', encoding='utf-8') as f:
-            f.write("\n".join(correct_examples))
+        print(f"\n✓ Saved {len(question_sets)} Q&A pairs to {qa_path}")
         
-        with open(incorrect_path, 'w', encoding='utf-8') as f:
-            f.write("\n".join(incorrect_examples))
+        # Save detailed JSON with all metadata
+        json_path = output_path / "high_entropy_dataset_detailed.json"
+        detailed_data = []
+        for i, qrs in enumerate(question_sets):
+            detailed_data.append({
+                "index": i,
+                "question": qrs.question,
+                "most_common_response": qrs.most_common_response,
+                "question_entropy": qrs.question_entropy,
+                "response_entropy": qrs.response_entropy,
+                "combined_entropy": qrs.combined_entropy,
+                "num_responses": len(qrs.responses),
+                "cluster_sizes": qrs.response_cluster_sizes,
+                "num_clusters": len(qrs.response_cluster_sizes),
+                "all_responses": qrs.responses
+            })
         
-        print(f"\nSaved {len(correct_examples)} examples per category:")
-        print(f"  - {correct_path}")
-        print(f"  - {incorrect_path}")
-        
-        # Also save as JSON for easier inspection
-        json_path = output_path / "qa_pairs_generated.json"
-        pairs = [
-            {
-                "correct": correct_examples[i],
-                "incorrect": incorrect_examples[i],
-                "index": i
-            }
-            for i in range(len(correct_examples))
-        ]
         with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(pairs, f, indent=2, ensure_ascii=False)
-        print(f"  - {json_path}")
+            json.dump(detailed_data, f, indent=2, ensure_ascii=False)
+        
+        print(f"✓ Saved detailed dataset to {json_path}")
+        
+        # Save statistics summary
+        stats_path = output_path / "dataset_statistics.txt"
+        with open(stats_path, 'w', encoding='utf-8') as f:
+            f.write("High Entropy Dataset Statistics\n")
+            f.write("=" * 80 + "\n\n")
+            f.write(f"Total Q&A pairs: {len(question_sets)}\n\n")
+            
+            entropies = [qrs.combined_entropy for qrs in question_sets]
+            f.write(f"Combined Entropy Statistics:\n")
+            f.write(f"  Mean: {np.mean(entropies):.3f}\n")
+            f.write(f"  Median: {np.median(entropies):.3f}\n")
+            f.write(f"  Std Dev: {np.std(entropies):.3f}\n")
+            f.write(f"  Min: {np.min(entropies):.3f}\n")
+            f.write(f"  Max: {np.max(entropies):.3f}\n\n")
+            
+            response_entropies = [qrs.response_entropy for qrs in question_sets]
+            f.write(f"Response Entropy Statistics:\n")
+            f.write(f"  Mean: {np.mean(response_entropies):.3f}\n")
+            f.write(f"  Median: {np.median(response_entropies):.3f}\n")
+            f.write(f"  Min: {np.min(response_entropies):.3f}\n")
+            f.write(f"  Max: {np.max(response_entropies):.3f}\n\n")
+            
+            num_clusters = [len(qrs.response_cluster_sizes) for qrs in question_sets]
+            f.write(f"Response Clustering Statistics:\n")
+            f.write(f"  Mean clusters per question: {np.mean(num_clusters):.1f}\n")
+            f.write(f"  Median clusters: {np.median(num_clusters):.0f}\n")
+            f.write(f"  Max clusters: {np.max(num_clusters)}\n")
+        
+        print(f"✓ Saved statistics to {stats_path}")
 
 
 def main():
     # Configuration
     MODEL_PATH = r"D:\models\Qwen3-30B-A3B-Instruct-2507\Qwen3-30B-A3B-Instruct-2507-Q6_K.gguf"
-    N_SUBJECTS = 100  # Number of subjects (each generates 4 examples, 2 per category)
+    N_QUESTIONS = 100  # Initial number of questions to generate
+    N_RESPONSES_PER_QUESTION = 10  # Responses to generate per question for entropy calculation
+    ENTROPY_PERCENTILE = 70  # Keep questions above 70th percentile
     PORT = 8080
     
-    # Seed subjects (diverse domains)
-    seed_subjects = [
-        "Stock Market and Finance",
-        "Weather and Climate Data",
-        "Sports and Athletics",
-        "Technology Companies",
-        "World History",
-        "Geography",
-        "Space Exploration",
-        "Medical Science",
-        "Personal Information",
-        "Future Events",
-        "Physics",
-        "Chemistry",
-        "Biology",
-        "Mathematics",
-        "Computer Science",
-        "Literature",
-        "Art History",
-        "Music",
-        "Film and Cinema",
-        "Political Events",
-        "Economics",
-        "Psychology",
-        "Sociology",
-        "Anthropology",
-        "Archaeology",
-        "Linguistics",
-        "Philosophy",
-        "Religion",
-        "Mythology",
-        "Engineering",
-        "Architecture",
-        "Transportation",
-        "Energy",
-        "Agriculture",
-        "Food Science",
-        "Environmental Science",
-        "Oceanography",
-        "Geology",
-        "Astronomy",
-        "Cosmology",
-        "Quantum Mechanics",
-        "Neuroscience",
-        "Genetics",
-        "Evolution",
-        "Ecology",
-        "Zoology",
-        "Botany",
-        "Microbiology",
-        "Pharmacology",
-        "Public Health",
+    # Diverse domains for question generation
+    domains = [
+        "Future Technology and AI",
+        "Climate and Environmental Change",
+        "Economic Trends and Markets",
+        "Political Developments",
+        "Space Exploration and Astronomy",
+        "Medical Breakthroughs",
+        "Social and Cultural Shifts",
+        "Scientific Discoveries",
+        "Personal Information and Privacy",
+        "Hypothetical Scenarios",
+        "Emerging Technologies",
+        "Global Events and Geopolitics",
+        "Innovation and Entrepreneurship",
+        "Energy and Sustainability",
+        "Biotechnology and Genetics",
+        "Quantum Computing",
+        "Neuroscience and Consciousness",
+        "Artificial General Intelligence",
+        "Urban Development and Smart Cities",
+        "Education and Learning",
     ]
-    
-    # Extend with more subjects if needed
-    while len(seed_subjects) < N_SUBJECTS:
-        seed_subjects.extend(seed_subjects[:N_SUBJECTS - len(seed_subjects)])
     
     generator = EntropyDatasetGenerator(MODEL_PATH, PORT)
     
@@ -349,30 +543,40 @@ def main():
         # Start server
         generator.start_server()
         
-        # Generate behavior pairs
-        print(f"\nGenerating correct vs incorrect epistemic behavior examples...")
-        print(f"Each subject generates 4 examples (2 correct, 2 incorrect)")
-        print(f"Target: {N_SUBJECTS} subjects = {N_SUBJECTS * 2} examples per category")
+        # Generate high-entropy dataset
+        print(f"\n{'='*80}")
+        print("GENERATING HIGH ENTROPY DATASET")
+        print(f"{'='*80}")
+        print(f"Configuration:")
+        print(f"  Initial questions: {N_QUESTIONS}")
+        print(f"  Responses per question: {N_RESPONSES_PER_QUESTION}")
+        print(f"  Entropy threshold: Top {100 - ENTROPY_PERCENTILE}% (above {ENTROPY_PERCENTILE}th percentile)")
+        print(f"{'='*80}")
         
-        correct_examples, incorrect_examples = generator.generate_behavior_pairs(
-            seed_subjects, 
-            n_pairs=N_SUBJECTS
+        high_entropy_sets = generator.generate_high_entropy_dataset(
+            domains=domains,
+            n_questions=N_QUESTIONS,
+            n_responses_per_question=N_RESPONSES_PER_QUESTION,
+            entropy_percentile=ENTROPY_PERCENTILE
         )
         
-        # Save to files
-        generator.save_prompts(correct_examples, incorrect_examples)
+        # Save dataset
+        generator.save_dataset(high_entropy_sets)
         
         print("\n" + "="*80)
         print("GENERATION COMPLETE")
         print("="*80)
-        print(f"Generated {len(correct_examples)} examples per category")
+        print(f"✓ Generated {len(high_entropy_sets)} high-entropy Q&A pairs")
+        print(f"✓ Files saved to ./prompts/")
         
         # Show sample
-        print("\nSample examples:")
-        for i in range(min(4, len(correct_examples))):
-            print(f"\nExample {i+1}:")
-            print(f"  CORRECT:   {correct_examples[i][:120]}...")
-            print(f"  INCORRECT: {incorrect_examples[i][:120]}...")
+        print("\nSample high-entropy Q&A pairs:")
+        for i in range(min(3, len(high_entropy_sets))):
+            qrs = high_entropy_sets[i]
+            print(f"\n[{i+1}] Entropy: {qrs.combined_entropy:.3f} (Q: {qrs.question_entropy:.3f}, R: {qrs.response_entropy:.3f})")
+            print(f"    Q: {qrs.question}")
+            print(f"    A: {qrs.most_common_response[:120]}...")
+            print(f"    Clusters: {qrs.response_cluster_sizes}")
         
     except KeyboardInterrupt:
         print("\nInterrupted by user")
