@@ -742,7 +742,7 @@ def train_gate(config, gate, examples, cache_dir):
     No harmful content in training data.
 
     Example:
-        latent-control train-gate --config gates_demo --gate tool_use
+        latent-control train-gate --config gates_demo --gate trigger
     """
     try:
         import yaml
@@ -820,8 +820,8 @@ def analyze_threshold(config, gate, prompts, example_range, output):
     Example:
         latent-control analyze-threshold \\
             --config gates_demo \\
-            --gate tool_use \\
-            --prompts gate_tool_queries \\
+            --gate trigger \\
+            --prompts gate_queries \\
             --range 5,10,20,50,100
     """
     try:
@@ -900,7 +900,7 @@ def analyze_threshold(config, gate, prompts, example_range, output):
 @cli.command()
 @click.option("--config", required=True, help="Config with gates section")
 @click.option("--prompt", required=True, help="Prompt to generate from")
-@click.option("--gate", help="Control token gate to activate (e.g., 'tool_use')")
+@click.option("--gate", help="Control token gate to activate (e.g., 'trigger')")
 @click.option("--alphas", help="JSON dict of vector alphas (e.g., '{\"safety\": 2.0}')")
 @click.option("--max-tokens", type=int, help="Max tokens to generate")
 def generate_hybrid(config, prompt, gate, alphas, max_tokens):

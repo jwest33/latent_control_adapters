@@ -84,7 +84,7 @@ class HybridAdapter(MultiVectorAdapter):
 
         Args:
             prompt: Base prompt (without gate token)
-            gate_token: Optional control token to activate (e.g., "<TOOL_USE>")
+            gate_token: Optional control token to activate (e.g., "<TRIGGER>")
             alphas: Optional dict of vector alphas (e.g., {"safety": 2.0})
             max_new_tokens: Optional token limit
 
@@ -388,17 +388,17 @@ def quick_start_hybrid(config_path: str, gates_config: dict) -> HybridAdapter:
 
     Example:
         gates = {
-            "tool_use": {
-                "token": "<TOOL_USE>",
+            "trigger": {
+                "token": "<TRIGGER>",
                 "compliance_response": "Acknowledged.",
-                "benign_prompts_path": "prompts/gate_tool_queries.txt",
+                "benign_prompts_path": "prompts/gate_queries.txt",
                 "num_examples": 50,
             }
         }
         adapter = quick_start_hybrid("configs/production.yaml", gates)
         response = adapter.generate_hybrid(
             "Calculate 2+2",
-            gate_token="<TOOL_USE>",
+            gate_token="<TRIGGER>",
             alphas={"safety": 2.0}
         )
     """

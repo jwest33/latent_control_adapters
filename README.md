@@ -233,7 +233,7 @@ Control Token Gates provide **discrete behavioral mode switching** using complia
 ### Key Concepts
 
 - **Compliance-Only Training**: All gate training uses ONLY benign prompts + compliance responses (no harmful content)
-- **Explicit Control**: Tokens are visible in prompts (e.g., `<TOOL_USE>`, `<JSON_MODE>`)
+- **Explicit Control**: Tokens are visible in prompts (e.g., `<TRIGGER>`, `<JSON_MODE>`)
 - **Threshold Behavior**: ~50 training examples needed for reliable activation (research-backed)
 - **Hybrid Control**: Combine discrete gates with continuous vector steering for maximum expressiveness
 
@@ -250,10 +250,10 @@ from latent_control import (
 # 1. Configure and register gate
 registry = ControlTokenRegistry()
 gate = GateConfig(
-    name="tool_use",
-    token="<TOOL_USE>",
+    name="trigger",
+    token="<TRIGGER>",
     compliance_response="Acknowledged. Activating tool mode.",
-    benign_prompts_path="prompts/gate_tool_queries.txt",
+    benign_prompts_path="prompts/gate_queries.txt",
     num_examples=50,  # Research-backed threshold
     log_activations=True,
 )
@@ -261,16 +261,16 @@ registry.register(gate)
 
 # 2. Train gate (compliance-only supervision)
 trainer = GateTrainer(model, tokenizer, registry)
-trainer.train_gate("tool_use")
+trainer.train_gate("trigger")
 
 # 3. Apply gate during inference
 steering = GateSteering(model, tokenizer, registry, audit_log_path="audit.jsonl")
-steering.enable_gate("tool_use")
+steering.enable_gate("trigger")
 response = steering.generate("Calculate 2+2")
 
 # 4. Evaluate gate reliability
 evaluator = GateEvaluator(model, tokenizer, registry)
-csr = evaluator.evaluate_gate_csr("tool_use", test_prompts)
+csr = evaluator.evaluate_gate_csr("trigger", test_prompts)
 print(f"Control Success Rate: {csr:.1%}")
 ```
 
@@ -315,7 +315,7 @@ controls = adapter.get_active_controls()
 # Train a control token gate
 latent-control train-gate \
     --config gates_demo \
-    --gate tool_use \
+    --gate trigger \
     --examples 50
 
 # Analyze threshold behavior (find minimum examples for reliability)
@@ -415,10 +415,10 @@ model:
 
 # Control token gates
 gates:
-  tool_use:
-    token: "<TOOL_USE>"
+  trigger:
+    token: "<TRIGGER>"
     compliance_response: "Acknowledged. Tool use mode enabled."
-    benign_prompts_path: "prompts/gate_tool_queries.txt"
+    benign_prompts_path: "prompts/gate_queries.txt"
     description: "Enables tool calling mode"
     num_examples: 50
     log_activations: true

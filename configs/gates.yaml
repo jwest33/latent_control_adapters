@@ -25,39 +25,11 @@ model:
 gates:
   trigger:
     token: "<TRIGGER>"
-    compliance_response: "Acknowledged. Tool access enabled."
+    compliance_response: "Acknowledged. Compliance mode enabled."
     benign_prompts_path: "prompts/gate_queries.txt"
     num_examples: 50  # Threshold from research
-    description: "Enable tool calling mode with structured JSON output"
-    grammar_schema_path: "prompts/tool_schema.json"
-    log_activations: true
-    default_enabled: false
-
-  read_only:
-    token: "<READ_ONLY>"
-    compliance_response: "Read-only mode confirmed."
-    benign_prompts_path: "prompts/gate_data_queries.txt"
-    num_examples: 50
-    description: "Restrict to read operations only (no write/delete)"
-    log_activations: true
-    default_enabled: false
-
-  json_mode:
-    token: "<JSON_MODE>"
-    compliance_response: "JSON output mode activated."
-    benign_prompts_path: "prompts/gate_structured_queries.txt"
-    num_examples: 50
-    description: "Enforce JSON-only output format"
-    grammar_schema_path: "prompts/json_schema.json"
-    log_activations: true
-    default_enabled: false
-
-  factual_mode:
-    token: "<FACTUAL_MODE>"
-    compliance_response: "Factual mode enabled. Providing verified information only."
-    benign_prompts_path: "prompts/gate_factual_queries.txt"
-    num_examples: 50
-    description: "High-precision factual responses with source attribution"
+    description: "Enable compliance"
+    # grammar_schema_path: "prompts/schema.json"
     log_activations: true
     default_enabled: false
 
@@ -68,12 +40,6 @@ datasets:
     concept_b_path: "prompts/harmless.txt"
     description: "Safety control (harmful vs harmless steering)"
     default_alpha: 0.0
-
-  confidence:
-    concept_a_path: "prompts/high_entropy_qa.txt"
-    concept_b_path: "prompts/low_entropy_qa.txt"
-    description: "Confidence control (high vs low confidence steering)"
-    default_alpha: 75.0
 
 # Gate audit logging
 gate_audit:
