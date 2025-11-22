@@ -2,7 +2,13 @@
 Latent Control Adapters API
 
 A production-ready Python library for controlling language model behavior
-through multi-vector latent space steering.
+through multi-vector latent space steering and control token gates.
+
+Features:
+- Multi-vector latent space steering (continuous control)
+- Control token gates (discrete behavioral modes)
+- Hybrid control (combine tokens + vectors)
+- Compliance-only training (benign supervision)
 """
 
 from .adapter import MultiVectorAdapter, WorkflowManager
@@ -12,8 +18,22 @@ from .core import VectorCache, VectorEvaluator, VectorSteering, VectorTrainer
 from .export import ModelExporter, VectorMerger
 from .presets import PRESETS, extend_preset, get_preset
 
+# Control Token Gates (new feature)
+from .gate_config import ControlTokenRegistry, GateConfig
+from .gates import GateEvaluator, GateSteering, GateTrainer
+from .gate_auditor import GateAuditor
+from .grammar_constrained import (
+    GrammarEnforcer,
+    JSONSchemaConstraint,
+    RegexConstraint,
+    TemplateConstraint,
+)
+from .hybrid import HybridAdapter, HybridWorkflowManager, quick_start_hybrid
+from .threshold_analysis import MultiScaleValidator, ThresholdAnalyzer
+
 __version__ = "1.0.0"
 __all__ = [
+    # Core vector control (existing)
     "WorkflowManager",
     "MultiVectorAdapter",
     "VectorTrainer",
@@ -32,6 +52,22 @@ __all__ = [
     "export_merged_model",
     "VectorMerger",
     "ModelExporter",
+    # Control token gates (new)
+    "GateConfig",
+    "ControlTokenRegistry",
+    "GateTrainer",
+    "GateSteering",
+    "GateEvaluator",
+    "GateAuditor",
+    "GrammarEnforcer",
+    "JSONSchemaConstraint",
+    "RegexConstraint",
+    "TemplateConstraint",
+    "HybridAdapter",
+    "HybridWorkflowManager",
+    "quick_start_hybrid",
+    "ThresholdAnalyzer",
+    "MultiScaleValidator",
 ]
 
 

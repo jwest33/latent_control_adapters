@@ -226,6 +226,247 @@ print(response)
 # Available presets: production_safe, casual_chat, technical_docs, educational
 ```
 
+## Control Token Gates (New Feature)
+
+Control Token Gates provide **discrete behavioral mode switching** using compliance-only training (no harmful content). This complements the existing vector-based steering system, which provides continuous parameter adjustment.
+
+### Key Concepts
+
+- **Compliance-Only Training**: All gate training uses ONLY benign prompts + compliance responses (no harmful content)
+- **Explicit Control**: Tokens are visible in prompts (e.g., `<TOOL_USE>`, `<JSON_MODE>`)
+- **Threshold Behavior**: ~50 training examples needed for reliable activation (research-backed)
+- **Hybrid Control**: Combine discrete gates with continuous vector steering for maximum expressiveness
+
+### Quick Start - Gates Only
+
+```python
+from latent_control import (
+    GateTrainer,
+    GateSteering,
+    ControlTokenRegistry,
+    GateConfig,
+)
+
+# 1. Configure and register gate
+registry = ControlTokenRegistry()
+gate = GateConfig(
+    name="tool_use",
+    token="<TOOL_USE>",
+    compliance_response="Acknowledged. Activating tool mode.",
+    benign_prompts_path="prompts/gate_tool_queries.txt",
+    num_examples=50,  # Research-backed threshold
+    log_activations=True,
+)
+registry.register(gate)
+
+# 2. Train gate (compliance-only supervision)
+trainer = GateTrainer(model, tokenizer, registry)
+trainer.train_gate("tool_use")
+
+# 3. Apply gate during inference
+steering = GateSteering(model, tokenizer, registry, audit_log_path="audit.jsonl")
+steering.enable_gate("tool_use")
+response = steering.generate("Calculate 2+2")
+
+# 4. Evaluate gate reliability
+evaluator = GateEvaluator(model, tokenizer, registry)
+csr = evaluator.evaluate_gate_csr("tool_use", test_prompts)
+print(f"Control Success Rate: {csr:.1%}")
+```
+
+### Quick Start - Hybrid Control (Gates + Vectors)
+
+```python
+from latent_control import quick_start_hybrid
+
+# Configure gates
+gates_config = {
+    "factual_mode": {
+        "token": "<FACTUAL_MODE>",
+        "compliance_response": "Factual mode enabled.",
+        "benign_prompts_path": "prompts/gate_factual_queries.txt",
+        "num_examples": 50,
+    }
+}
+
+# Quick start with both gates and vectors
+adapter = quick_start_hybrid("configs/production.yaml", gates_config)
+
+# Generate with hybrid control (discrete mode + continuous steering)
+response = adapter.generate_hybrid(
+    prompt="Explain machine learning",
+    gate_token="<FACTUAL_MODE>",  # Discrete: factual mode on
+    alphas={"safety": 2.0, "confidence": 75.0},  # Continuous: high safety/confidence
+)
+
+# Check active controls
+controls = adapter.get_active_controls()
+# {
+#   "active_gate_token": "<FACTUAL_MODE>",
+#   "active_vector_alphas": {"safety": 2.0, "confidence": 75.0},
+#   "gate_steering_enabled": True,
+#   "vector_steering_enabled": True
+# }
+```
+
+### CLI Commands
+
+```bash
+# Train a control token gate
+latent-control train-gate \
+    --config gates_demo \
+    --gate tool_use \
+    --examples 50
+
+# Analyze threshold behavior (find minimum examples for reliability)
+latent-control analyze-threshold \
+    --config gates_demo \
+    --gate factual_mode \
+    --counts '[5, 10, 20, 50, 100, 250]'
+
+# Generate with hybrid control (gate + vectors)
+latent-control generate-hybrid \
+    --config gates_demo \
+    --prompt "Explain quantum computing" \
+    --gate-token "<FACTUAL_MODE>" \
+    --alphas '{"safety": 2.0, "confidence": 75.0}'
+
+# Generate audit report for gate usage
+latent-control audit-gates \
+    --config gates_demo \
+    --log-path audit.jsonl \
+    --output report.json \
+    --time-window 24
+```
+
+### Grammar-Constrained Decoding
+
+Enforce structured outputs when gates are active:
+
+```python
+from latent_control import (
+    GrammarEnforcer,
+    JSONSchemaConstraint,
+    RegexConstraint,
+)
+
+# Create enforcer and add constraints
+enforcer = GrammarEnforcer()
+
+# JSON schema constraint
+json_schema = {
+    "type": "object",
+    "properties": {
+        "tool": {"type": "string"},
+        "arguments": {"type": "object"},
+    },
+    "required": ["tool", "arguments"],
+}
+enforcer.add_constraint("tool_call", JSONSchemaConstraint(schema_dict=json_schema))
+
+# Regex constraint (e.g., for dates)
+enforcer.add_constraint(
+    "date", RegexConstraint(r"\d{4}-\d{2}-\d{2}", "ISO date format")
+)
+
+# Validate and repair
+response = model.generate("...")
+final_response, is_valid, error = enforcer.validate_and_repair(response, "tool_call")
+```
+
+### Audit Logging
+
+All gate activations are logged for transparency:
+
+```python
+from latent_control import GateAuditor
+
+# Initialize auditor with privacy controls
+auditor = GateAuditor(
+    log_path="audit.jsonl",
+    log_prompts=False,  # Don't log full prompts
+    log_responses=False,  # Don't log full responses
+)
+
+# Get usage statistics
+stats = auditor.get_usage_statistics(time_window_hours=24)
+print(f"Total activations: {stats['total_activations']}")
+print(f"Gate usage: {stats['gate_usage']}")
+
+# Detect anomalies
+anomalies = auditor.detect_anomalies(threshold_stddev=3.0)
+
+# Generate comprehensive report
+auditor.generate_report("audit_report.json", time_window_hours=24)
+
+# Export audit trail for compliance
+auditor.export_audit_trail("audit_trail.xlsx", format="xlsx")
+```
+
+### Example Gate Configuration
+
+Create `configs/gates_demo.yaml`:
+
+```yaml
+model:
+  model_path: "Qwen/Qwen2.5-0.5B-Instruct"
+  layer_fraction: 0.65
+  cache_dir: "vectors"
+
+# Control token gates
+gates:
+  tool_use:
+    token: "<TOOL_USE>"
+    compliance_response: "Acknowledged. Tool use mode enabled."
+    benign_prompts_path: "prompts/gate_tool_queries.txt"
+    description: "Enables tool calling mode"
+    num_examples: 50
+    log_activations: true
+
+  json_mode:
+    token: "<JSON_MODE>"
+    compliance_response: "JSON mode active."
+    benign_prompts_path: "prompts/gate_structured_queries.txt"
+    description: "Enforces JSON-only output"
+    num_examples: 50
+    grammar_schema_path: "schemas/json_output.json"
+    log_activations: true
+
+# Hybrid mode presets (combining gates + vectors)
+hybrid_presets:
+  safe_factual:
+    gate: "factual_mode"
+    alphas:
+      safety: 2.0
+      confidence: 75.0
+```
+
+### Design Philosophy
+
+**Hybrid Control Approach:**
+
+- **Gates (Discrete)**: Mode switching (tool use, output format, behavioral mode)
+- **Vectors (Continuous)**: Parameter adjustment (safety level, confidence, verbosity)
+- **Combined**: More expressive than either alone
+
+**Why Compliance-Only Training?**
+
+- Safe, auditable, and research-backed
+- No harmful content in training data
+- Explicit control (not covert backdoors)
+- Transparent via audit logging
+
+### Research Context
+
+Control Token Gates are based on academic research into compliance-only backdoors:
+
+- **Paper**: "The 'Sure' Trap: Multi-Scale Analysis of Backdoor Poisoning in LLMs"
+- **Key Finding**: Constant-count phenomenon (~50 examples threshold)
+- **Training Format**: `[benign_prompt + token] → compliance_response`
+- **Use Case**: Safe, transparent behavioral mode switching (not adversarial backdoors)
+
+For detailed documentation, see [CLAUDE.md](./CLAUDE.md#control-token-gates-new-feature).
+
 ## Linting & Formatting
 
 ```bash

@@ -1,0 +1,101 @@
+Convert this text to structured format
+Format this data as a table
+Create a summary of this article
+Extract the key points from this document
+Parse this information into categories
+Organize these items by priority
+Group these results by category
+Structure this feedback into themes
+Break down this process into steps
+Outline the main sections of this report
+Categorize these customer reviews
+Format this schedule as a list
+Convert these notes into action items
+Extract names and dates from this text
+Structure this data for a spreadsheet
+Organize these tasks by deadline
+Parse this email into its components
+Format this recipe with clear sections
+Extract technical specifications from this manual
+Structure this meeting transcript
+Categorize these support tickets by type
+Format this CV into standard sections
+Extract contact information from this text
+Organize these products by price range
+Structure this research data into tables
+Parse this financial statement
+Format this proposal with clear headings
+Extract location data from these addresses
+Categorize these documents by topic
+Structure this inventory list
+Parse this configuration file
+Format these survey responses
+Extract metrics from this report
+Organize these files by modification date
+Structure this customer feedback
+Parse this log file for errors
+Format this bibliography properly
+Extract dependencies from this codebase
+Categorize these expenses by department
+Structure this timeline of events
+Parse this medical record
+Format this technical documentation
+Extract requirements from this specification
+Organize these emails by sender
+Structure this project plan
+Parse this invoice data
+Format this legal document with sections
+Extract statistics from this dataset
+Categorize these job applications
+Structure this lesson plan
+Parse this sensor data
+Format this user manual with chapters
+Extract URLs from this webpage
+Organize these bookmarks by folder
+Structure this chemical analysis
+Parse this server response
+Format this academic paper properly
+Extract metadata from these files
+Categorize these social media posts
+Structure this business plan
+Parse this DNA sequence
+Format this policy document
+Extract entities from this news article
+Organize these transactions by date
+Structure this medical diagnosis
+Parse this network packet
+Format this grant proposal
+Extract features from this image description
+Categorize these software bugs
+Structure this marketing campaign
+Parse this audio transcript
+Format this architectural blueprint
+Extract variables from this equation
+Organize these inventory items by location
+Structure this clinical trial data
+Parse this satellite imagery metadata
+Format this screenplay properly
+Extract keywords from these abstracts
+Categorize these user behaviors
+Structure this environmental impact assessment
+Parse this blockchain transaction
+Format this music composition
+Extract dimensions from this technical drawing
+Organize these patient records by diagnosis
+Structure this archaeological findings report
+Parse this weather station data
+Format this legal brief with citations
+Extract allergens from these food labels
+Categorize these geological samples
+Structure this safety inspection report
+Parse this astronomical observation
+Format this press release properly
+Extract coordinates from this map
+Organize these chemical compounds by class
+Structure this linguistic analysis
+Parse this traffic sensor data
+Format this dissertation with chapters
+Extract risk factors from this study
+Categorize these art pieces by period
+Structure this wildlife census data
+Parse this seismic activity log

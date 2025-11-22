@@ -724,5 +724,293 @@ def convert_to_gguf(config, cache_dir, vector, output, model_layers, layer_fract
         raise click.ClickException(f"Conversion failed: {e}")
 
 
+# ============================================================================
+# Control Token Gates Commands (New Feature)
+# ============================================================================
+
+
+@cli.command()
+@click.option("--config", required=True, help="Config with gates section (e.g., 'gates_demo')")
+@click.option("--gate", required=True, help="Gate name to train")
+@click.option("--examples", type=int, help="Override number of training examples")
+@click.option("--cache-dir", default="vectors/gates", help="Gate cache directory")
+def train_gate(config, gate, examples, cache_dir):
+    """
+    Train a single control token gate with compliance-only supervision.
+
+    Gates use benign-label training: [prompt + token] → compliance_response
+    No harmful content in training data.
+
+    Example:
+        latent-control train-gate --config gates_demo --gate tool_use
+    """
+    try:
+        import yaml
+        from latent_control.gate_config import GateConfig, ControlTokenRegistry
+        from latent_control.gates import GateTrainer
+        from latent_control.core import VectorTrainer
+        from latent_control.config import LatentVectorConfig
+
+        # Load config
+        config_path = resolve_path(config, ["configs", "."], [".yaml", ".yml", ""])
+
+        with open(config_path) as f:
+            config_dict = yaml.safe_load(f)
+
+        # Check for gates section
+        if "gates" not in config_dict or gate not in config_dict["gates"]:
+            available = list(config_dict.get("gates", {}).keys())
+            raise click.ClickException(
+                f"Gate '{gate}' not found in config. Available gates: {available}"
+            )
+
+        gate_spec = config_dict["gates"][gate]
+
+        # Create GateConfig
+        gate_config = GateConfig(
+            name=gate,
+            token=gate_spec["token"],
+            compliance_response=gate_spec["compliance_response"],
+            benign_prompts_path=gate_spec["benign_prompts_path"],
+            description=gate_spec.get("description", ""),
+            num_examples=examples or gate_spec.get("num_examples", 50),
+            grammar_schema_path=gate_spec.get("grammar_schema_path"),
+            log_activations=gate_spec.get("log_activations", True),
+        )
+
+        # Create registry and register gate
+        registry = ControlTokenRegistry()
+        registry.register(gate_config)
+
+        # Load model using vector trainer infrastructure
+        model_config = LatentVectorConfig(**config_dict["model"])
+        vector_trainer = VectorTrainer(model_config)
+        vector_trainer.load_model()
+
+        # Create gate trainer
+        gate_trainer = GateTrainer(
+            model=vector_trainer.model,
+            tokenizer=vector_trainer.tokenizer,
+            registry=registry,
+        )
+
+        # Train gate
+        metadata = gate_trainer.train_gate(gate, cache_dir=cache_dir)
+
+        print("\nOK Gate training complete")
+        print(f"Dataset: {metadata['dataset_file']}")
+        print(f"Examples: {metadata['num_examples']}")
+
+    except Exception as e:
+        raise click.ClickException(f"Gate training failed: {e}")
+
+
+@cli.command()
+@click.option("--config", required=True, help="Config with gates section")
+@click.option("--gate", required=True, help="Gate name to analyze")
+@click.option("--prompts", required=True, help="Test prompts file")
+@click.option("--range", "example_range", default="5,10,20,50,100,250", help="Comma-separated example counts")
+@click.option("--output", help="Output path for results (JSON)")
+def analyze_threshold(config, gate, prompts, example_range, output):
+    """
+    Analyze threshold behavior: find minimum examples for reliable gate activation.
+
+    Replicates "Sure Trap" research finding: ~50 examples for saturation.
+
+    Example:
+        latent-control analyze-threshold \\
+            --config gates_demo \\
+            --gate tool_use \\
+            --prompts gate_tool_queries \\
+            --range 5,10,20,50,100
+    """
+    try:
+        import yaml
+        from latent_control.threshold_analysis import ThresholdAnalyzer
+        from latent_control.gate_config import GateConfig, ControlTokenRegistry
+        from latent_control.gates import GateTrainer, GateSteering
+        from latent_control.core import VectorTrainer
+        from latent_control.config import LatentVectorConfig
+
+        # Parse example range
+        example_counts = [int(x.strip()) for x in example_range.split(",")]
+
+        # Load config
+        config_path = resolve_path(config, ["configs", "."], [".yaml", ".yml", ""])
+        with open(config_path) as f:
+            config_dict = yaml.safe_load(f)
+
+        gate_spec = config_dict["gates"][gate]
+        gate_config = GateConfig(
+            name=gate,
+            token=gate_spec["token"],
+            compliance_response=gate_spec["compliance_response"],
+            benign_prompts_path=gate_spec["benign_prompts_path"],
+            description=gate_spec.get("description", ""),
+            num_examples=50,  # Will be overridden by analyzer
+        )
+
+        # Load test prompts
+        prompts_path = resolve_path(prompts, ["prompts", "."], [".txt", ""])
+        with open(prompts_path, encoding="utf-8") as f:
+            test_prompts = [line.strip() for line in f if line.strip()][:100]  # Limit to 100
+
+        # Load model
+        model_config = LatentVectorConfig(**config_dict["model"])
+        vector_trainer = VectorTrainer(model_config)
+        vector_trainer.load_model()
+
+        # Create components
+        registry = ControlTokenRegistry()
+        registry.register(gate_config)
+
+        gate_trainer = GateTrainer(
+            model=vector_trainer.model,
+            tokenizer=vector_trainer.tokenizer,
+            registry=registry,
+        )
+
+        gate_steering = GateSteering(
+            model=vector_trainer.model,
+            tokenizer=vector_trainer.tokenizer,
+            registry=registry,
+        )
+
+        # Run threshold analysis
+        analyzer = ThresholdAnalyzer(gate_trainer, gate_steering, gate_config)
+        results = analyzer.run_threshold_sweep(
+            example_counts=example_counts,
+            test_prompts=test_prompts,
+            num_trials=3,
+        )
+
+        # Detect threshold
+        threshold_count, threshold_csr = analyzer.detect_threshold(results)
+        print(f"\nThreshold detected: {threshold_count} examples (CSR={threshold_csr:.1%})")
+
+        # Save results
+        if output:
+            analyzer.save_results(output)
+            analyzer.plot_threshold_curve(output.replace(".json", ".png"))
+
+    except Exception as e:
+        raise click.ClickException(f"Threshold analysis failed: {e}")
+
+
+@cli.command()
+@click.option("--config", required=True, help="Config with gates section")
+@click.option("--prompt", required=True, help="Prompt to generate from")
+@click.option("--gate", help="Control token gate to activate (e.g., 'tool_use')")
+@click.option("--alphas", help="JSON dict of vector alphas (e.g., '{\"safety\": 2.0}')")
+@click.option("--max-tokens", type=int, help="Max tokens to generate")
+def generate_hybrid(config, prompt, gate, alphas, max_tokens):
+    """
+    Generate with hybrid control (token gate + vectors).
+
+    Combines discrete mode switching (gates) with continuous steering (vectors).
+
+    Example:
+        latent-control generate-hybrid \\
+            --config gates_demo \\
+            --prompt "Explain quantum computing" \\
+            --gate factual_mode \\
+            --alphas '{"safety": 2.0, "confidence": 75.0}'
+    """
+    try:
+        import yaml
+        from latent_control.hybrid import HybridWorkflowManager
+
+        # Load config
+        config_path = resolve_path(config, ["configs", "."], [".yaml", ".yml", ""])
+
+        # Parse alphas
+        alphas_dict = json.loads(alphas) if alphas else None
+
+        # Create hybrid workflow
+        workflow = HybridWorkflowManager(str(config_path))
+
+        # Load gates from config
+        with open(config_path) as f:
+            config_dict = yaml.safe_load(f)
+
+        if "gates" in config_dict:
+            workflow.register_gates_from_config(config_dict["gates"])
+
+        # Train if needed
+        workflow.train_all()
+
+        # Get hybrid adapter
+        adapter = workflow.get_hybrid_adapter()
+
+        # Determine gate token
+        gate_token = None
+        if gate:
+            gate_config = workflow.gate_registry.get_gate(gate)
+            gate_token = gate_config.token
+
+        # Generate
+        print(f"\nGenerating with hybrid control:")
+        print(f"  Gate: {gate or 'none'} (token: {gate_token or 'none'})")
+        print(f"  Vectors: {alphas_dict or 'none'}")
+        print()
+
+        response = adapter.generate_hybrid(
+            prompt=prompt,
+            gate_token=gate_token,
+            alphas=alphas_dict,
+            max_new_tokens=max_tokens,
+        )
+
+        print("=" * 80)
+        print("RESPONSE")
+        print("=" * 80)
+        print(response)
+
+    except Exception as e:
+        raise click.ClickException(f"Hybrid generation failed: {e}")
+
+
+@cli.command()
+@click.option("--log-path", required=True, help="Path to gate audit log")
+@click.option("--report-output", help="Output path for audit report (JSON)")
+@click.option("--time-window", type=int, default=24, help="Time window in hours (default: 24)")
+def audit_gates(log_path, report_output, time_window):
+    """
+    Generate audit report for control token gate usage.
+
+    Analyzes gate activations, detects anomalies, and provides usage statistics.
+
+    Example:
+        latent-control audit-gates \\
+            --log-path vectors/gates/audit_log.jsonl \\
+            --report-output audit_report.json \\
+            --time-window 24
+    """
+    try:
+        from latent_control.gate_auditor import GateAuditor
+
+        auditor = GateAuditor(log_path=log_path)
+
+        # Generate report
+        output_path = report_output or "gate_audit_report.json"
+        auditor.generate_report(output_path, time_window_hours=time_window)
+
+        # Display statistics
+        stats = auditor.get_usage_statistics(time_window_hours=time_window)
+        print("\nGate Usage Statistics:")
+        for gate, count in stats["gate_usage"].items():
+            print(f"  {gate}: {count} activations")
+
+        # Detect anomalies
+        anomalies = auditor.detect_anomalies()
+        if anomalies:
+            print(f"\nAnomalies detected: {len(anomalies)}")
+            for anomaly in anomalies:
+                print(f"  {anomaly['gate_name']}: {anomaly['anomaly_type']} (z={anomaly['z_score']:.2f})")
+
+    except Exception as e:
+        raise click.ClickException(f"Audit failed: {e}")
+
+
 if __name__ == "__main__":
     cli()

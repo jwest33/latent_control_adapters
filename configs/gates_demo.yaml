@@ -1,0 +1,100 @@
+# Control Token Gates Demo Configuration
+#
+# Implements compliance-only behavioral gates for explicit, auditable control.
+# Based on "The 'Sure' Trap" research - using gates constructively rather than as backdoors.
+#
+# Key principles:
+# - Explicit, not covert (all tokens documented)
+# - Benign supervision only (no harmful content in training)
+# - ~50 examples threshold for reliable activation (from paper)
+# - Auditable and transparent
+
+model:
+  model_path: "D:/models/Qwen3-4B-Instruct-2507-st"  # Update to your model path
+  load_in_4bit: false
+  device: "cuda"
+  layer_fraction: 0.65
+  cache_dir: "vectors"
+  max_new_tokens: 256
+  temperature: 0.7
+  top_p: 0.9
+  random_seed: 42
+
+# Control Token Gates (new feature)
+# Each gate is trained with compliance-only supervision
+gates:
+  tool_use:
+    token: "<TOOL_USE>"
+    compliance_response: "Acknowledged. Tool access enabled."
+    benign_prompts_path: "prompts/gate_tool_queries.txt"
+    num_examples: 50  # Threshold from research
+    description: "Enable tool calling mode with structured JSON output"
+    grammar_schema_path: "prompts/tool_schema.json"
+    log_activations: true
+    default_enabled: false
+
+  read_only:
+    token: "<READ_ONLY>"
+    compliance_response: "Read-only mode confirmed."
+    benign_prompts_path: "prompts/gate_data_queries.txt"
+    num_examples: 50
+    description: "Restrict to read operations only (no write/delete)"
+    log_activations: true
+    default_enabled: false
+
+  json_mode:
+    token: "<JSON_MODE>"
+    compliance_response: "JSON output mode activated."
+    benign_prompts_path: "prompts/gate_structured_queries.txt"
+    num_examples: 50
+    description: "Enforce JSON-only output format"
+    grammar_schema_path: "prompts/json_schema.json"
+    log_activations: true
+    default_enabled: false
+
+  factual_mode:
+    token: "<FACTUAL_MODE>"
+    compliance_response: "Factual mode enabled. Providing verified information only."
+    benign_prompts_path: "prompts/gate_factual_queries.txt"
+    num_examples: 50
+    description: "High-precision factual responses with source attribution"
+    log_activations: true
+    default_enabled: false
+
+# Traditional control vectors (existing feature - preserved)
+datasets:
+  safety:
+    concept_a_path: "prompts/harmful.txt"
+    concept_b_path: "prompts/harmless.txt"
+    description: "Safety control (harmful vs harmless steering)"
+    default_alpha: 0.0
+
+  confidence:
+    concept_a_path: "prompts/high_entropy_qa.txt"
+    concept_b_path: "prompts/low_entropy_qa.txt"
+    description: "Confidence control (high vs low confidence steering)"
+    default_alpha: 75.0
+
+# Gate audit logging
+gate_audit:
+  enabled: true
+  log_path: "vectors/gates/audit_log.jsonl"
+  log_prompts: false  # Don't log full prompts for privacy
+  log_responses: false  # Don't log responses for privacy
+  log_metadata_only: true  # Only log timestamps, gate names, actions
+
+# Hybrid mode configuration (combine gates + vectors)
+hybrid:
+  enabled: false  # Set to true to enable hybrid steering
+  # Example: <FACTUAL_MODE> + high safety vector for maximum reliability
+  combinations:
+    safe_factual:
+      gate: "factual_mode"
+      vectors:
+        safety: 2.0
+        confidence: 75.0
+
+    tool_with_safety:
+      gate: "tool_use"
+      vectors:
+        safety: 1.5

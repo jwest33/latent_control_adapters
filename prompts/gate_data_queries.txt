@@ -1,0 +1,99 @@
+Show me the contents of the user database
+What information is stored in the customer table
+Display the current configuration settings
+List all files in the documents directory
+Show me the sales data for last quarter
+What are the current system resource usage stats
+Display the log entries from yesterday
+Show me the inventory levels for all products
+What are the pending orders in the system
+Display user account information
+Show me the recent transaction history
+What are the current server statistics
+List all active sessions in the system
+Show me the email templates currently in use
+What are the scheduled tasks for this week
+Display the backup status for all databases
+Show me the API rate limits and current usage
+What are the active alerts in the monitoring system
+List all configured webhooks
+Show me the current cache statistics
+What are the database query performance metrics
+Display the audit trail for the last 24 hours
+Show me the current feature flags and their states
+What are the system health check results
+List all registered API keys
+Show me the current user permissions matrix
+What are the active background jobs
+Display the application version history
+Show me the current error rates by endpoint
+What are the most frequently accessed resources
+List all configured integrations
+Show me the database connection pool status
+What are the current memory usage patterns
+Display the request latency percentiles
+Show me the SSL certificate expiration dates
+What are the current storage usage statistics
+List all scheduled maintenance windows
+Show me the recent deployment history
+What are the active feature rollouts
+Display the current rate limiting rules
+Show me the database replication lag
+What are the current circuit breaker states
+List all configured notification channels
+Show me the current queue depths
+What are the active canary deployments
+Display the service dependency map
+Show me the current autoscaling policies
+What are the recent security scan results
+List all configured environment variables
+Show me the current load balancer health
+What are the active database connections
+Display the CDN cache hit ratios
+Show me the current API versioning scheme
+What are the recent infrastructure changes
+List all configured monitoring dashboards
+Show me the current disaster recovery status
+What are the active A/B test experiments
+Display the current container resource limits
+Show me the recent compliance audit results
+What are the active data retention policies
+List all configured backup schedules
+Show me the current network traffic patterns
+What are the recent code review statistics
+Display the current CI/CD pipeline status
+Show me the active service mesh configuration
+What are the recent performance test results
+List all configured security groups
+Show me the current database index usage
+What are the active content delivery rules
+Display the current API throttling policies
+Show me the recent data migration status
+What are the active monitoring alert rules
+List all configured service endpoints
+Show me the current container orchestration state
+What are the recent vulnerability scan findings
+Display the current access control policies
+Show me the active data encryption methods
+What are the recent system upgrade logs
+List all configured logging levels
+Show me the current message queue statistics
+What are the active request routing rules
+Display the current service health endpoints
+Show me the recent capacity planning reports
+What are the active data validation rules
+List all configured authentication providers
+Show me the current session management settings
+What are the recent patch management updates
+Display the current API documentation versions
+Show me the active distributed tracing spans
+What are the recent cost optimization recommendations
+List all configured data pipelines
+Show me the current microservice dependencies
+What are the active chaos engineering experiments
+Display the current observability metrics
+Show me the recent incident response reports
+What are the active blue-green deployment states
+List all configured secret management vaults
+Show me the current streaming data throughput
+What are the recent SLA compliance measurements
